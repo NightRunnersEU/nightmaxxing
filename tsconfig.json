@@ -16,8 +16,8 @@
     "noImplicitReturns": true,
     "noUncheckedIndexedAccess": true,
     "paths": {
-      "@tokenmaxxing/api-contract": ["./packages/api-contract/src/index.ts"],
-      "@tokenmaxxing/db": ["./packages/db/src/index.ts"]
+      "@nightmaxxing/api-contract": ["./packages/api-contract/src/index.ts"],
+      "@nightmaxxing/db": ["./packages/db/src/index.ts"]
     },
     "resolveJsonModule": true,
     "skipLibCheck": true,

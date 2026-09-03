@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import type { AuthUser } from "@tokenmaxxing/api-contract";
+import type { AuthUser } from "@nightmaxxing/api-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -7,7 +7,7 @@ import {
   type CliConfig,
   ConfigService,
   ConsoleService,
-  type TokenmaxxingApiClient,
+  type NightmaxxingApiClient,
 } from "../services";
 import { whoamiEffect } from "./whoami";
 
@@ -52,9 +52,9 @@ const user: AuthUser = {
 };
 
 const config: CliConfig = {
-  apiUrl: "https://api.tokenmaxxing.test",
+  apiUrl: "https://api.nightmaxxing.test",
   token: "tmx_test",
-  wwwUrl: "https://tokenmaxxing.test",
+  wwwUrl: "https://nightmaxxing.test",
 };
 
 function testLayer() {
@@ -67,7 +67,7 @@ function testLayer() {
           me: {
             me: () => Effect.succeed({ user }),
           },
-        } as unknown as TokenmaxxingApiClient),
+        } as unknown as NightmaxxingApiClient),
     }),
     Layer.succeed(ConfigService)({
       clearToken: () =>

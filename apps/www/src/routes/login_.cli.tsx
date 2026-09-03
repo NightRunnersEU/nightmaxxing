@@ -44,7 +44,7 @@ function CliLoginPage() {
 
         {code === "" ? (
           <p className="mt-2 text-sm text-muted-foreground">
-            Missing login code. Run <Code>tokenmaxxing login</Code> and follow the link it prints.
+            Missing login code. Run <Code>nightmaxxing login</Code> and follow the link it prints.
           </p>
         ) : me.isPending ? (
           <p className="mt-2 text-sm text-muted-foreground">Checking your session…</p>
@@ -78,7 +78,7 @@ function CliLoginPage() {
             </p>
             {approve.isError ? (
               <p className="mt-3 text-sm text-red-500">
-                {errorMessage(approve.error, "Approval failed; run `tokenmaxxing login` again.")}
+                {errorMessage(approve.error, "Approval failed; run `nightmaxxing login` again.")}
               </p>
             ) : null}
             <Button

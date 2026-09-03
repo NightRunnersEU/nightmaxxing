@@ -13,11 +13,11 @@ import {
 } from "./service";
 
 describe("AuthService provider linking", () => {
-  it("creates Google-only users from the verified email slug", async () => {
+  it("creates GitHub-only users from the verified email slug", async () => {
     const { service } = await makeTestAuth();
 
     const result = await runAuth(
-      service.signInWithProvider(googleProfile({ email: "Alex+Work@example.com" })),
+      service.signInWithProvider(githubProfile({ email: "Alex+Work@example.com", login: null })),
     );
 
     expect(result.user.login).toBe("alex-work");
@@ -28,7 +28,7 @@ describe("AuthService provider linking", () => {
     store.users.set("existing", currentUser({ id: "existing", login: "alex" }));
 
     const result = await runAuth(
-      service.signInWithProvider(googleProfile({ email: "alex@example.com" })),
+      service.signInWithProvider(githubProfile({ email: "alex@example.com", login: null })),
     );
 
     expect(result.user.login).toBe("alex-2");
@@ -44,11 +44,11 @@ describe("AuthService provider linking", () => {
     });
 
     const result = await runAuth(
-      service.signInWithProvider(googleProfile({ email: "alex@example.com" })),
+      service.signInWithProvider(githubProfile({ email: "alex@example.com" })),
     );
 
     expect(result.user.id).toBe(user.id);
-    expect(store.accounts.get(accountKey("google", "google_123"))?.userId).toBe(user.id);
+    expect(store.accounts.get(accountKey("github", "github_123"))?.userId).toBe(user.id);
   });
 
   it("merges verified-email duplicates into the oldest matching user", async () => {
@@ -68,14 +68,14 @@ describe("AuthService provider linking", () => {
 
     const result = await runAuth(
       service.signInWithProvider(
-        googleProfile({ email: "shared@example.com", providerAccountId: "google" }),
+        githubProfile({ email: "shared@example.com", providerAccountId: "github" }),
       ),
     );
 
     expect(result.user.id).toBe(first.id);
     expect(store.users.has(second.id)).toBe(false);
     expect(store.accounts.get(accountKey("github", "second"))?.userId).toBe(first.id);
-    expect(store.accounts.get(accountKey("google", "google"))?.userId).toBe(first.id);
+    expect(store.accounts.get(accountKey("github", "github"))?.userId).toBe(first.id);
   });
 
   it("signs an existing provider duplicate into the oldest verified-email profile", async () => {
@@ -88,18 +88,18 @@ describe("AuthService provider linking", () => {
       profile: githubProfile({ email: "shared@example.com", providerAccountId: "github" }),
       userId: first.id,
     });
-    store.accounts.set(accountKey("google", "google_123"), {
-      profile: googleProfile({ email: "shared@example.com" }),
+    store.accounts.set(accountKey("github", "github_123"), {
+      profile: githubProfile({ email: "shared@example.com" }),
       userId: second.id,
     });
 
     const result = await runAuth(
-      service.signInWithProvider(googleProfile({ email: "shared@example.com" })),
+      service.signInWithProvider(githubProfile({ email: "shared@example.com" })),
     );
 
     expect(result.user.id).toBe(first.id);
     expect(store.users.has(second.id)).toBe(false);
-    expect(store.accounts.get(accountKey("google", "google_123"))?.userId).toBe(first.id);
+    expect(store.accounts.get(accountKey("github", "github_123"))?.userId).toBe(first.id);
   });
 
   it("links a new provider to the current session user", async () => {
@@ -108,13 +108,13 @@ describe("AuthService provider linking", () => {
     store.users.set(user.id, user);
 
     const result = await runAuth(
-      service.signInWithProvider(googleProfile({ email: "new@example.com" }), {
+      service.signInWithProvider(githubProfile({ email: "new@example.com" }), {
         currentUser: user,
       }),
     );
 
     expect(result.user.id).toBe(user.id);
-    expect(store.accounts.get(accountKey("google", "google_123"))?.userId).toBe(user.id);
+    expect(store.accounts.get(accountKey("github", "github_123"))?.userId).toBe(user.id);
   });
 
   it("rejects linking a provider account that belongs to another user", async () => {
@@ -123,14 +123,14 @@ describe("AuthService provider linking", () => {
     const other = currentUser({ id: "other", login: "other" });
     store.users.set(current.id, current);
     store.users.set(other.id, other);
-    store.accounts.set(accountKey("google", "google_123"), {
-      profile: googleProfile({ email: "other@example.com" }),
+    store.accounts.set(accountKey("github", "github_123"), {
+      profile: githubProfile({ email: "other@example.com" }),
       userId: other.id,
     });
 
     await expect(
       runAuth(
-        service.signInWithProvider(googleProfile({ email: "other@example.com" }), {
+        service.signInWithProvider(githubProfile({ email: "other@example.com" }), {
           currentUser: current,
         }),
       ),
@@ -147,20 +147,20 @@ describe("AuthService provider linking", () => {
       profile: githubProfile({ email: "alex@example.com", providerAccountId: "github" }),
       userId: current.id,
     });
-    store.accounts.set(accountKey("google", "google_123"), {
-      profile: googleProfile({ email: "alex@example.com" }),
+    store.accounts.set(accountKey("github", "github_123"), {
+      profile: githubProfile({ email: "alex@example.com" }),
       userId: duplicate.id,
     });
 
     const result = await runAuth(
-      service.signInWithProvider(googleProfile({ email: "alex@example.com" }), {
+      service.signInWithProvider(githubProfile({ email: "alex@example.com" }), {
         currentUser: current,
       }),
     );
 
     expect(result.user.id).toBe(current.id);
     expect(store.users.has(duplicate.id)).toBe(false);
-    expect(store.accounts.get(accountKey("google", "google_123"))?.userId).toBe(current.id);
+    expect(store.accounts.get(accountKey("github", "github_123"))?.userId).toBe(current.id);
   });
 });
 
@@ -314,19 +314,6 @@ function githubProfile(input: Partial<OAuthProfile> = {}): OAuthProfile {
     name: null,
     provider: "github",
     providerAccountId: "github_123",
-    ...input,
-  };
-}
-
-function googleProfile(input: Partial<OAuthProfile> = {}): OAuthProfile {
-  return {
-    avatarUrl: null,
-    email: "alex@example.com",
-    emailVerified: true,
-    login: null,
-    name: null,
-    provider: "google",
-    providerAccountId: "google_123",
     ...input,
   };
 }

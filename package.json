@@ -1,5 +1,5 @@
 {
-  "name": "@tokenmaxxing/monorepo",
+  "name": "@nightmaxxing/monorepo",
   "private": true,
   "workspaces": {
     "packages": [

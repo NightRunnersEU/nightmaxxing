@@ -3,7 +3,7 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
-import { TokenmaxxingApi } from "@tokenmaxxing/api-contract";
+import { NightmaxxingApi } from "@nightmaxxing/api-contract";
 
 /**
  * The typed client derived from the shared contract — every call the CLI
@@ -11,7 +11,7 @@ import { TokenmaxxingApi } from "@tokenmaxxing/api-contract";
  * configured.
  */
 
-type TokenmaxxingApiClient = HttpApiClient.ForApi<typeof TokenmaxxingApi>;
+type NightmaxxingApiClient = HttpApiClient.ForApi<typeof NightmaxxingApi>;
 
 interface ApiClientOptions {
   baseUrl: string;
@@ -21,13 +21,13 @@ interface ApiClientOptions {
 class ApiClientService extends Context.Service<
   ApiClientService,
   {
-    readonly make: (options: ApiClientOptions) => Effect.Effect<TokenmaxxingApiClient>;
+    readonly make: (options: ApiClientOptions) => Effect.Effect<NightmaxxingApiClient>;
   }
 >()("ApiClientService") {}
 
 const ApiClientLive = Layer.succeed(ApiClientService)({
   make: (options) =>
-    HttpApiClient.make(TokenmaxxingApi, {
+    HttpApiClient.make(NightmaxxingApi, {
       baseUrl: options.baseUrl.replace(/\/$/, ""),
       ...(options.token === undefined
         ? {}
@@ -44,4 +44,4 @@ const ApiClientLive = Layer.succeed(ApiClientService)({
 
 export { ApiClientLive, ApiClientService };
 
-export type { TokenmaxxingApiClient };
+export type { NightmaxxingApiClient };

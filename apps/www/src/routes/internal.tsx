@@ -5,7 +5,7 @@ import type {
   AdminDeviceStatus,
   AdminUsersResponse,
   ServiceRepairReasonValue,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 
 import { Avatar } from "../components/ui/avatar";
 import { Badge } from "../components/ui/badge";
@@ -510,7 +510,7 @@ function serviceStatusTitle(row: AdminUsersData["devices"][number]): string | un
       : `auto-update error: ${device.serviceAutoUpdateError}`,
     repairReasonForDevice(device) === null
       ? undefined
-      : "manual repair: tokenmaxxing service repair",
+      : "manual repair: nightmaxxing service repair",
     device.serviceError === null ? undefined : `error: ${device.serviceError}`,
   ]
     .filter((part): part is string => part !== undefined)

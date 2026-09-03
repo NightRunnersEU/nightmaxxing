@@ -20,7 +20,7 @@ interface DrizzleShape {
   use<A>(run: (db: DrizzleD1Database) => Promise<A>): Effect.Effect<A, DatabaseError, any>;
 }
 
-class Drizzle extends Context.Service<Drizzle, DrizzleShape>()("@tokenmaxxing/api/Drizzle") {
+class Drizzle extends Context.Service<Drizzle, DrizzleShape>()("@nightmaxxing/api/Drizzle") {
   static layer(connection: D1ConnectionLike): Layer.Layer<Drizzle> {
     return Layer.succeed(
       Drizzle,

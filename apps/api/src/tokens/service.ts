@@ -2,8 +2,8 @@ import { Context } from "effect";
 import { Effect } from "effect";
 import { Option } from "effect";
 
-import { DeviceNotFound, TokenNotFound } from "@tokenmaxxing/api-contract";
-import type { CliIdentity, CliTokenSummary, DeviceSummary } from "@tokenmaxxing/api-contract";
+import { DeviceNotFound, TokenNotFound } from "@nightmaxxing/api-contract";
+import type { CliIdentity, CliTokenSummary, DeviceSummary } from "@nightmaxxing/api-contract";
 
 import { CLI_TOKEN_PREFIX, hashCliToken } from "../auth/crypto";
 import type { DatabaseError } from "../database";
@@ -45,11 +45,11 @@ interface TokensRepositoryShape {
 }
 
 class TokensService extends Context.Service<TokensService, TokensServiceShape>()(
-  "@tokenmaxxing/api/TokensService",
+  "@nightmaxxing/api/TokensService",
 ) {}
 
 class TokensRepository extends Context.Service<TokensRepository, TokensRepositoryShape>()(
-  "@tokenmaxxing/api/TokensRepository",
+  "@nightmaxxing/api/TokensRepository",
 ) {}
 
 const makeTokensService = Effect.fn("makeTokensService")(function* () {

@@ -5,7 +5,7 @@ import {
   usageDays,
   usageSourceStats,
   users,
-} from "@tokenmaxxing/db";
+} from "@nightmaxxing/db";
 import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { Layer } from "effect";

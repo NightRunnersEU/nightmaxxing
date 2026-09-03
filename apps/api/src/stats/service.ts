@@ -1,7 +1,7 @@
 import { Context } from "effect";
 import { Effect } from "effect";
 
-import type { StatsResponse } from "@tokenmaxxing/api-contract";
+import type { StatsResponse } from "@nightmaxxing/api-contract";
 
 import type { DatabaseError } from "../database";
 
@@ -26,11 +26,11 @@ interface StatsRepositoryShape {
 }
 
 class StatsService extends Context.Service<StatsService, StatsServiceShape>()(
-  "@tokenmaxxing/api/StatsService",
+  "@nightmaxxing/api/StatsService",
 ) {}
 
 class StatsRepository extends Context.Service<StatsRepository, StatsRepositoryShape>()(
-  "@tokenmaxxing/api/StatsRepository",
+  "@nightmaxxing/api/StatsRepository",
 ) {}
 
 const makeStatsService = Effect.fn("makeStatsService")(function* (

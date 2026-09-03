@@ -1,14 +1,14 @@
-import type { ProfileResponse } from "@tokenmaxxing/api-contract";
+import type { ProfileResponse } from "@nightmaxxing/api-contract";
 
 type Profile = typeof ProfileResponse.Type;
 
-const SITE_ORIGIN = "https://tokenmaxxing.sh";
+const SITE_ORIGIN = "https://maxxing.nrght.eu";
 const OG_IMAGE_HEIGHT = 630;
 const OG_IMAGE_STYLE_VERSION = 3;
 const OG_IMAGE_WIDTH = 1200;
 
 function profileOgTitle(profile: Profile): string {
-  return `${profile.user.login} on tokenmaxxing.sh`;
+  return `${profile.user.login} on maxxing.nrght.eu`;
 }
 
 function profileOgDescription(profile: Profile): string {

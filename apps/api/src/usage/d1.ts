@@ -1,4 +1,4 @@
-import { devices, usageDays, usageRawBatches, usageSourceStats } from "@tokenmaxxing/db";
+import { devices, usageDays, usageRawBatches, usageSourceStats } from "@nightmaxxing/db";
 import { and, eq, lt, notInArray } from "drizzle-orm";
 import { Effect } from "effect";
 import { Layer } from "effect";

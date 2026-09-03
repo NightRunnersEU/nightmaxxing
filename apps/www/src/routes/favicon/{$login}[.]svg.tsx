@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 import { createFileRoute } from "@tanstack/react-router";
-import { ProfileIdentityResponse } from "@tokenmaxxing/api-contract";
+import { ProfileIdentityResponse } from "@nightmaxxing/api-contract";
 
 import { resolveApiUrl } from "../../lib/config";
 import { FAVICON_LAYOUT_VERSION } from "../../lib/favicon";

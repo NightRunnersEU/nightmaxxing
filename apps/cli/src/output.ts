@@ -39,7 +39,7 @@ interface HumanConfirmOptions<E> {
   defaultValue: boolean;
 }
 
-const tokenmaxxingSubcommands = new Set([
+const nightmaxxingSubcommands = new Set([
   "bootstrap",
   "login",
   "logout",
@@ -50,7 +50,7 @@ const tokenmaxxingSubcommands = new Set([
 ]);
 
 const serviceSubcommands = new Set(["doctor", "install", "repair", "run", "status", "uninstall"]);
-const tokenmaxxingFlagsWithValues = new Set([
+const nightmaxxingFlagsWithValues = new Set([
   "--completions",
   "--log-level",
   "--service",
@@ -345,7 +345,7 @@ function formatClackHintRow(hint: string, options: FormatHighlightOptions = {}):
 }
 
 function formatClackHintBody(hint: string, options: FormatHighlightOptions): string {
-  const runCommandPattern = /\brun(\s+)tokenmaxxing\b/g;
+  const runCommandPattern = /\brun(\s+)nightmaxxing\b/g;
   let result = "";
   let cursor = 0;
 
@@ -353,7 +353,7 @@ function formatClackHintBody(hint: string, options: FormatHighlightOptions): str
     const runIndex = match.index;
     const whitespace = match[1] ?? " ";
     const commandStart = runIndex + "run".length + whitespace.length;
-    const commandLength = tokenmaxxingCommandLength(hint.slice(commandStart));
+    const commandLength = nightmaxxingCommandLength(hint.slice(commandStart));
     const command = hint.slice(commandStart, commandStart + commandLength);
 
     result += hint.slice(cursor, commandStart);
@@ -365,16 +365,16 @@ function formatClackHintBody(hint: string, options: FormatHighlightOptions): str
   return result;
 }
 
-function tokenmaxxingCommandLength(input: string): number {
+function nightmaxxingCommandLength(input: string): number {
   const tokens = Array.from(input.matchAll(/[^\s,;.]+/g));
   const firstToken = tokens[0];
-  if (firstToken === undefined || firstToken.index !== 0 || firstToken[0] !== "tokenmaxxing") {
-    return "tokenmaxxing".length;
+  if (firstToken === undefined || firstToken.index !== 0 || firstToken[0] !== "nightmaxxing") {
+    return "nightmaxxing".length;
   }
 
   let lastIncludedIndex = 0;
   const command = tokens[1]?.[0];
-  if (command !== undefined && tokenmaxxingSubcommands.has(command)) {
+  if (command !== undefined && nightmaxxingSubcommands.has(command)) {
     lastIncludedIndex = 1;
   }
 
@@ -390,7 +390,7 @@ function tokenmaxxingCommandLength(input: string): number {
     cursor += 1;
     const nextToken = tokens[cursor]?.[0];
     if (
-      tokenmaxxingFlagsWithValues.has(flag) &&
+      nightmaxxingFlagsWithValues.has(flag) &&
       nextToken !== undefined &&
       !nextToken.startsWith("-")
     ) {
@@ -400,7 +400,7 @@ function tokenmaxxingCommandLength(input: string): number {
   }
 
   const lastToken = tokens[lastIncludedIndex];
-  return (lastToken?.index ?? 0) + (lastToken?.[0].length ?? "tokenmaxxing".length);
+  return (lastToken?.index ?? 0) + (lastToken?.[0].length ?? "nightmaxxing".length);
 }
 
 function capitalizeClackLine(line: string): string {

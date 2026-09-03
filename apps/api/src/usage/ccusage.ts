@@ -2,7 +2,7 @@ import type {
   RawUsageReportInput,
   SourceUsageStatsInput,
   UsageDayInput,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 import { Effect, Option, Schema } from "effect";
 
 const PARSER_VERSION = "ccusage-v20-raw-4";

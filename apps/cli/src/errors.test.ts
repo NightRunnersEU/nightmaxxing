@@ -100,7 +100,7 @@ describe("renderCliFailure", () => {
     expect(JSON.parse(errors[0]!)).toEqual({
       error: {
         code: "not_logged_in",
-        hint: "run tokenmaxxing login",
+        hint: "run nightmaxxing login",
         message: "not logged in",
       },
       status: "error",
@@ -124,7 +124,7 @@ describe("renderCliFailure", () => {
     expect(JSON.parse(errors[0]!)).toEqual({
       error: {
         code: "already_logged_in",
-        hint: "run tokenmaxxing logout first before logging in again",
+        hint: "run nightmaxxing logout first before logging in again",
         message: "already logged in",
       },
       status: "error",
@@ -145,7 +145,7 @@ describe("renderCliFailure", () => {
     expect(exit._tag).toBe("Failure");
     expect(logs).toEqual([]);
     expect(promptCalls).toEqual([]);
-    expect(errors).toEqual(["error: not logged in\nhint: run tokenmaxxing login"]);
+    expect(errors).toEqual(["error: not logged in\nhint: run nightmaxxing login"]);
   });
 
   it("renders expected failures through Clack when interactive", async () => {
@@ -167,7 +167,7 @@ describe("renderCliFailure", () => {
     expect(errors).toEqual([]);
     expect(promptCalls).toEqual([
       "error:Not logged in",
-      "info:Hint: Run \x1b[36mtokenmaxxing login\x1b[0m",
+      "info:Hint: Run \x1b[36mnightmaxxing login\x1b[0m",
       "outro:Failed",
     ]);
   });
@@ -196,7 +196,7 @@ describe("renderCliFailure", () => {
     expect(logs).toEqual([]);
     expect(errors).toEqual([]);
     expect(promptCalls).toEqual([
-      "info:Hint: Run \x1b[36mtokenmaxxing logout\x1b[0m first before logging in again",
+      "info:Hint: Run \x1b[36mnightmaxxing logout\x1b[0m first before logging in again",
       "outro:Failed",
     ]);
   });
@@ -213,7 +213,7 @@ describe("renderCliFailure", () => {
     );
 
     expect(exit._tag).toBe("Failure");
-    expect(errors[0]).toBe("error: not logged in\nhint: run tokenmaxxing login");
+    expect(errors[0]).toBe("error: not logged in\nhint: run nightmaxxing login");
     expect(errors[1]).toContain("debug:\n");
   });
 });
@@ -221,7 +221,7 @@ describe("renderCliFailure", () => {
 describe("clackFailureForCliFailure", () => {
   it("keeps already logged in failures concise", () => {
     expect(new AlreadyLoggedInError({ envTokenActive: false }).message).toBe(
-      "error: already logged in\nhint: run tokenmaxxing logout first before logging in again",
+      "error: already logged in\nhint: run nightmaxxing logout first before logging in again",
     );
   });
 
@@ -230,11 +230,11 @@ describe("clackFailureForCliFailure", () => {
 
     expect(
       clackFailureForCliFailure(
-        "error: already logged in as pondorasti\nhint: run tokenmaxxing logout first before logging in again",
+        "error: already logged in as pondorasti\nhint: run nightmaxxing logout first before logging in again",
       ),
     ).toEqual({
       context: [],
-      hint: "run tokenmaxxing logout first before logging in again",
+      hint: "run nightmaxxing logout first before logging in again",
       message: "already logged in as \x1b[36mpondorasti\x1b[0m",
     });
   });
@@ -242,10 +242,10 @@ describe("clackFailureForCliFailure", () => {
   it("splits the redundant error prefix, context, and hint", () => {
     expect(
       clackFailureForCliFailure(
-        "error: could not detect install\npath: /usr/local/bin/tokenmaxxing\nhint: reinstall with npm",
+        "error: could not detect install\npath: /usr/local/bin/nightmaxxing\nhint: reinstall with npm",
       ),
     ).toEqual({
-      context: ["path: /usr/local/bin/tokenmaxxing"],
+      context: ["path: /usr/local/bin/nightmaxxing"],
       hint: "reinstall with npm",
       message: "could not detect install",
     });

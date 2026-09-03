@@ -5,9 +5,9 @@ import { LOGIN_OAUTH_PROVIDERS, OAuthProviderButtons } from "../components/oauth
 import { Card } from "../components/ui/card";
 import { SITE_ORIGIN } from "../lib/og";
 
-const LOGIN_TITLE = "Sign in — tokenmaxxing.sh";
+const LOGIN_TITLE = "Sign in — maxxing.nrght.eu";
 const LOGIN_DESCRIPTION =
-  "Sign in to tokenmaxxing.sh to sync your LLM agent usage and track your spot on the leaderboard.";
+  "Sign in to maxxing.nrght.eu to sync your LLM agent usage and track your spot on the leaderboard.";
 const LOGIN_URL = new URL("/login", SITE_ORIGIN).toString();
 
 const loginRedirectSchema = z.preprocess(
@@ -40,7 +40,7 @@ function LoginPage() {
   return (
     <div className="flex min-h-[calc(100vh-12rem)] items-center px-4 py-8">
       <Card className="mx-auto flex w-full max-w-sm flex-col items-center p-8 text-center">
-        <h1 className="text-xl font-semibold tracking-tight">Welcome to tokenmaxxing.sh</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Welcome to maxxing.nrght.eu</h1>
         <p className="mt-2 text-sm text-muted-foreground">The best place to track token usage.</p>
         <OAuthProviderButtons
           className="mt-6"
@@ -59,8 +59,8 @@ function sanitizeLoginRedirectPath(value: string): string | undefined {
   }
 
   try {
-    const url = new URL(trimmed, "https://tokenmaxxing.invalid");
-    if (url.origin !== "https://tokenmaxxing.invalid") {
+    const url = new URL(trimmed, "https://nightmaxxing.invalid");
+    if (url.origin !== "https://nightmaxxing.invalid") {
       return undefined;
     }
 

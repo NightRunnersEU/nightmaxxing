@@ -1,5 +1,5 @@
 import { Cause, Effect, Layer, Option } from "effect";
-import type { AuthUser } from "@tokenmaxxing/api-contract";
+import type { AuthUser } from "@nightmaxxing/api-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,7 +10,7 @@ import {
   ConfigService,
   ConsoleService,
   TerminalService,
-  type TokenmaxxingApiClient,
+  type NightmaxxingApiClient,
 } from "../services";
 import {
   AlreadyLoggedInError,
@@ -78,7 +78,7 @@ function makeTestLayer(options: TestLayerOptions) {
                 ? Effect.succeed({ user })
                 : Effect.fail(options.meError),
           },
-        } as unknown as TokenmaxxingApiClient);
+        } as unknown as NightmaxxingApiClient);
       },
     }),
     Layer.succeed(BrowserService)({
@@ -173,9 +173,9 @@ describe("loginEffect", () => {
   it("validates the active token and reports the logged-in username", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_old",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
@@ -186,19 +186,19 @@ describe("loginEffect", () => {
     const error = firstFailure(exit);
     expect(error).toBeInstanceOf(AlreadyLoggedInError);
     expect(error.message).toBe(
-      "error: already logged in as pondorasti\nhint: run tokenmaxxing logout first before logging in again",
+      "error: already logged in as pondorasti\nhint: run nightmaxxing logout first before logging in again",
     );
     expect(state.madeClients).toEqual([
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_old" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_old" },
     ]);
   });
 
   it("shows a loading spinner while checking an existing login", async () => {
     const { layer } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_old",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
     setTty(true);
@@ -221,9 +221,9 @@ describe("loginEffect", () => {
   it("reports a revoked stored token instead of claiming the user is logged in", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_old",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       meError: unauthorizedError(),
     });
@@ -235,19 +235,19 @@ describe("loginEffect", () => {
     const error = firstFailure(exit);
     expect(error).toBeInstanceOf(LoginTokenInvalidError);
     expect(error.message).toBe(
-      "error: stored login is no longer valid\nhint: run tokenmaxxing logout, then run tokenmaxxing login",
+      "error: stored login is no longer valid\nhint: run nightmaxxing logout, then run nightmaxxing login",
     );
     expect(state.madeClients).toEqual([
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_old" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_old" },
     ]);
   });
 
   it("reports validation failures separately from revoked tokens", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_old",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       meError: new Error("network unavailable"),
     });
@@ -262,7 +262,7 @@ describe("loginEffect", () => {
       "error: failed to validate stored login\nhint: check your network and try again",
     );
     expect(state.madeClients).toEqual([
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_old" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_old" },
     ]);
   });
 
@@ -270,9 +270,9 @@ describe("loginEffect", () => {
     const { layer } = makeTestLayer({
       envTokenActive: true,
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_env",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       meError: unauthorizedError(),
     });
@@ -284,7 +284,7 @@ describe("loginEffect", () => {
     const error = firstFailure(exit);
     expect(error).toBeInstanceOf(LoginTokenInvalidError);
     expect(error.message).toBe(
-      "error: login token is no longer valid\nhint: unset TOKENMAXXING_API_TOKEN or set a valid token",
+      "error: login token is no longer valid\nhint: unset NIGHTMAXXING_API_TOKEN or set a valid token",
     );
   });
 });

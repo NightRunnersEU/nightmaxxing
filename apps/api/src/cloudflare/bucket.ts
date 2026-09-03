@@ -5,7 +5,7 @@ import { Stack } from "alchemy/Stack";
 import { stageNameForResource } from "./stage";
 
 function bucketNameForStage(stage: string): string {
-  return `tokenmaxxing-${stageNameForResource(stage)}`;
+  return `nightmaxxing-${stageNameForResource(stage)}`;
 }
 
 const Bucket = Cloudflare.R2.Bucket(

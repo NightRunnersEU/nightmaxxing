@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish @851-labs/tokenmaxxing
+    name: Publish @nightrunners/nightmaxxing
     runs-on: ubuntu-latest
 
     steps:
@@ -52,10 +52,10 @@ jobs:
           NODE
 
       - name: Typecheck CLI
-        run: bun --filter @851-labs/tokenmaxxing typecheck
+        run: bun --filter @nightrunners/nightmaxxing typecheck
 
       - name: Test CLI
-        run: bun --filter @851-labs/tokenmaxxing test
+        run: bun --filter @nightrunners/nightmaxxing test
 
       - name: Lint
         run: bun run lint

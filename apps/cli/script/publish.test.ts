@@ -27,7 +27,7 @@ describe("publish script generated main package", () => {
   it("publishes a native CLI installer package with new target optional dependencies", () => {
     const manifest = createMainPackageJson();
 
-    expect(manifest.bin).toEqual({ tokenmaxxing: "./bin/tokenmaxxing.exe" });
+    expect(manifest.bin).toEqual({ nightmaxxing: "./bin/nightmaxxing.exe" });
     // npm links Windows shims after preinstall and before postinstall; using
     // postinstall here makes those shims run Node against the final native exe.
     expect(manifest.scripts).toEqual({
@@ -41,9 +41,9 @@ describe("publish script generated main package", () => {
       "README.md",
       "LICENSE",
     ]);
-    expect(manifest.optionalDependencies).toHaveProperty("@851-labs/tokenmaxxing-darwin-arm64");
+    expect(manifest.optionalDependencies).toHaveProperty("@nightrunners/nightmaxxing-darwin-arm64");
     expect(Object.keys(manifest.optionalDependencies)).not.toContain(
-      "@851-labs/tokenmaxxing-service-darwin-arm64",
+      "@nightrunners/nightmaxxing-service-darwin-arm64",
     );
   });
 });
@@ -51,13 +51,13 @@ describe("publish script generated main package", () => {
 describe("publish script registry checks", () => {
   it("uses public package version endpoints for scoped packages", () => {
     expect(
-      npmRegistryPackageVersionUrl("@851-labs/tokenmaxxing-darwin-arm64", "0.4.18-alpha.4"),
-    ).toBe("https://registry.npmjs.org/@851-labs%2Ftokenmaxxing-darwin-arm64/0.4.18-alpha.4");
+      npmRegistryPackageVersionUrl("@nightrunners/nightmaxxing-darwin-arm64", "0.4.18-alpha.4"),
+    ).toBe("https://registry.npmjs.org/@nightrunners%2Fnightmaxxing-darwin-arm64/0.4.18-alpha.4");
   });
 
   it("escapes version build metadata in registry URLs", () => {
-    expect(npmRegistryPackageVersionUrl("@851-labs/tokenmaxxing", "1.0.0-alpha.1+build.2")).toBe(
-      "https://registry.npmjs.org/@851-labs%2Ftokenmaxxing/1.0.0-alpha.1%2Bbuild.2",
-    );
+    expect(
+      npmRegistryPackageVersionUrl("@nightrunners/nightmaxxing", "1.0.0-alpha.1+build.2"),
+    ).toBe("https://registry.npmjs.org/@nightrunners%2Fnightmaxxing/1.0.0-alpha.1%2Bbuild.2");
   });
 });

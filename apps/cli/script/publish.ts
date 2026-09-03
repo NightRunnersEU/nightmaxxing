@@ -31,7 +31,7 @@ const repoDir = resolve(cliDir, "../..");
 async function publishCli(options: PublishCliOptions = {}): Promise<void> {
   const outDir =
     options.outDir === undefined
-      ? await mkdtemp(join(tmpdir(), "tokenmaxxing-cli-publish-"))
+      ? await mkdtemp(join(tmpdir(), "nightmaxxing-cli-publish-"))
       : resolve(options.outDir);
 
   assertSafeOutputDir(outDir);
@@ -76,8 +76,8 @@ async function writeMainPackage(outDir: string): Promise<void> {
     join(cliDir, "script", "native-bin-launcher.cjs"),
     join(packageDir, "native-bin-launcher.cjs"),
   );
-  await cp(join(cliDir, "script", "native-bin-launcher.cjs"), join(binDir, "tokenmaxxing.exe"));
-  await chmod(join(binDir, "tokenmaxxing.exe"), 0o755);
+  await cp(join(cliDir, "script", "native-bin-launcher.cjs"), join(binDir, "nightmaxxing.exe"));
+  await chmod(join(binDir, "nightmaxxing.exe"), 0o755);
   await Bun.write(
     join(packageDir, "package.json"),
     `${JSON.stringify(createMainPackageJson(), null, 2)}\n`,

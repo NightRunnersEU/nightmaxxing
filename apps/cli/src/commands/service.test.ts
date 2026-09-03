@@ -5,7 +5,7 @@ import { delimiter, dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { Cause, Effect, Layer } from "effect";
-import type { AuthUser } from "@tokenmaxxing/api-contract";
+import type { AuthUser } from "@nightmaxxing/api-contract";
 import { describe, expect, it } from "vitest";
 
 import packageJson from "../../package.json";
@@ -17,7 +17,7 @@ import {
   ConfigService,
   ConsoleService,
   TerminalService,
-  type TokenmaxxingApiClient,
+  type NightmaxxingApiClient,
 } from "../services";
 import {
   autoUpdateCommandDescription,
@@ -26,7 +26,7 @@ import {
   deferredServiceRepairInvocation,
   detectAutoUpdateManager,
   deterministicServiceJitterMs,
-  durableTokenmaxxingCommandPath,
+  durableNightmaxxingCommandPath,
   extractServiceRunnerFromTarball,
   findCommandOnPath,
   formatServiceLockStatus,
@@ -154,7 +154,7 @@ function makeTestLayer(options: TestLayerOptions) {
                 code: "ABC123",
                 expiresAt: "2026-06-13T20:00:00.000Z",
                 intervalSeconds: 0,
-                verificationUri: "https://tokenmaxxing.example/login/cli?code=ABC123",
+                verificationUri: "https://nightmaxxing.example/login/cli?code=ABC123",
               }),
           },
           me: {
@@ -166,7 +166,7 @@ function makeTestLayer(options: TestLayerOptions) {
           usage: {
             sync: () => Effect.succeed({ upserted: 0 }),
           },
-        } as unknown as TokenmaxxingApiClient);
+        } as unknown as NightmaxxingApiClient);
       },
     }),
     Layer.succeed(BrowserService)({
@@ -246,12 +246,12 @@ function makeInstallRuntime(
 ) {
   const commandInstall: CommandInstall = options.install ?? {
     autoUpdateManager: "npm" as const,
-    commandPath: "/usr/local/bin/tokenmaxxing",
-    resolvedCommandPath: "/usr/local/lib/node_modules/@851-labs/tokenmaxxing/dist/index.js",
+    commandPath: "/usr/local/bin/nightmaxxing",
+    resolvedCommandPath: "/usr/local/lib/node_modules/@nightrunners/nightmaxxing/dist/index.js",
   };
   const runner = {
-    packageName: "@851-labs/tokenmaxxing-darwin-arm64",
-    path: "/tmp/tokenmaxxing/service-runners/0.4.17/darwin-arm64/tokenmaxxing",
+    packageName: "@nightrunners/nightmaxxing-darwin-arm64",
+    path: "/tmp/nightmaxxing/service-runners/0.4.17/darwin-arm64/nightmaxxing",
     target: "darwin-arm64" as const,
     version: "0.4.17",
   };
@@ -268,7 +268,7 @@ function makeInstallRuntime(
     runtime: {
       env: {
         PATH: "/usr/local/bin:/usr/bin",
-        TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing",
+        NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing",
         ...options.env,
       },
       findCommandInstall: () => Effect.succeed(commandInstall),
@@ -368,26 +368,28 @@ describe("service runner platform packages", () => {
     expect(["linux-x64", "linux-x64-baseline"]).toContain(serviceRunnerTarget("linux", "x64"));
     expect(["windows-x64", "windows-x64-baseline"]).toContain(serviceRunnerTarget("win32", "x64"));
     expect(serviceRunnerTarget("win32", "arm64")).toBe("windows-arm64");
-    expect(serviceRunnerPackageName("darwin-arm64")).toBe("@851-labs/tokenmaxxing-darwin-arm64");
+    expect(serviceRunnerPackageName("darwin-arm64")).toBe(
+      "@nightrunners/nightmaxxing-darwin-arm64",
+    );
   });
 
   it("resolves native optional packages from the npm-installed binary location", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-native-package-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-native-package-"));
 
     try {
       const cliBin = join(
         dir,
         "node_modules",
-        "@851-labs",
-        "tokenmaxxing",
+        "@nightrunners",
+        "nightmaxxing",
         "bin",
-        "tokenmaxxing.exe",
+        "nightmaxxing.exe",
       );
       const packageJsonPath = join(
         dir,
         "node_modules",
-        "@851-labs",
-        "tokenmaxxing-darwin-arm64",
+        "@nightrunners",
+        "nightmaxxing-darwin-arm64",
         "package.json",
       );
       await mkdir(dirname(cliBin), { recursive: true });
@@ -396,7 +398,7 @@ describe("service runner platform packages", () => {
       await writeFile(packageJsonPath, "{}\n");
 
       expect(
-        resolveExecutableSiblingPackageJson("@851-labs/tokenmaxxing-darwin-arm64", [cliBin]),
+        resolveExecutableSiblingPackageJson("@nightrunners/nightmaxxing-darwin-arm64", [cliBin]),
       ).toBe(await realpath(packageJsonPath));
     } finally {
       await rm(dir, { force: true, recursive: true });
@@ -404,16 +406,16 @@ describe("service runner platform packages", () => {
   });
 
   it("can recover runner metadata from the current pointer for deferred repair", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-runner-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-runner-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: dir },
+        env: { NIGHTMAXXING_CONFIG_DIR: dir },
         home: "/Users/alex",
         platform: "darwin",
       });
       expect(paths).not.toBeNull();
-      const runnerPath = join(dir, "service-runners", "0.4.17", "darwin-arm64", "tokenmaxxing");
+      const runnerPath = join(dir, "service-runners", "0.4.17", "darwin-arm64", "nightmaxxing");
       await mkdir(dirname(runnerPath), { recursive: true });
       await writeFile(runnerPath, "#!/bin/sh\n", { mode: 0o755 });
       await writeFile(paths!.runnerPointerPath, `${runnerPath}\n`);
@@ -424,7 +426,7 @@ describe("service runner platform packages", () => {
           backend: "launchd",
           commandPath: runnerPath,
           installedAt: "2026-06-16T09:00:00.000Z",
-          runnerPackage: "@851-labs/tokenmaxxing-darwin-arm64",
+          runnerPackage: "@nightrunners/nightmaxxing-darwin-arm64",
           runnerPath,
           runnerTarget: "darwin-arm64",
           runnerVersion: "0.4.17",
@@ -435,7 +437,7 @@ describe("service runner platform packages", () => {
       );
 
       await expect(Effect.runPromise(readCurrentServiceRunnerInstall(paths!))).resolves.toEqual({
-        packageName: "@851-labs/tokenmaxxing-darwin-arm64",
+        packageName: "@nightrunners/nightmaxxing-darwin-arm64",
         path: runnerPath,
         target: "darwin-arm64",
         version: "0.4.17",
@@ -449,35 +451,35 @@ describe("service runner platform packages", () => {
 describe("servicePaths", () => {
   it("places generated files beside the stored CLI config", () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing" },
       home: "/Users/alex",
       platform: "darwin",
     });
 
     expect(paths).toEqual({
       backend: "launchd",
-      configDir: "/tmp/tokenmaxxing",
-      definitionPath: "/Users/alex/Library/LaunchAgents/sh.tokenmaxxing.sync.plist",
-      lockPath: "/tmp/tokenmaxxing/service.lock",
-      logPath: "/tmp/tokenmaxxing/service.log",
-      metadataPath: "/tmp/tokenmaxxing/service.json",
-      runnerPointerPath: "/tmp/tokenmaxxing/service-runner-current",
-      runnersDir: "/tmp/tokenmaxxing/service-runners",
-      statePath: "/tmp/tokenmaxxing/service-state.json",
-      updateLockPath: "/tmp/tokenmaxxing/service-update.lock",
-      wrapperPath: "/tmp/tokenmaxxing/tokenmaxxing.sh",
+      configDir: "/tmp/nightmaxxing",
+      definitionPath: "/Users/alex/Library/LaunchAgents/sh.nightmaxxing.sync.plist",
+      lockPath: "/tmp/nightmaxxing/service.lock",
+      logPath: "/tmp/nightmaxxing/service.log",
+      metadataPath: "/tmp/nightmaxxing/service.json",
+      runnerPointerPath: "/tmp/nightmaxxing/service-runner-current",
+      runnersDir: "/tmp/nightmaxxing/service-runners",
+      statePath: "/tmp/nightmaxxing/service-state.json",
+      updateLockPath: "/tmp/nightmaxxing/service-update.lock",
+      wrapperPath: "/tmp/nightmaxxing/nightmaxxing.sh",
     });
   });
 
   it("uses XDG config paths for systemd user units", () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing", XDG_CONFIG_HOME: "/home/alex/.xdg" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing", XDG_CONFIG_HOME: "/home/alex/.xdg" },
       home: "/home/alex",
       platform: "linux",
     });
 
     expect(paths?.backend).toBe("systemd");
-    expect(paths?.definitionPath).toBe("/home/alex/.xdg/systemd/user/tokenmaxxing-sync.service");
+    expect(paths?.definitionPath).toBe("/home/alex/.xdg/systemd/user/nightmaxxing-sync.service");
   });
 });
 
@@ -487,68 +489,68 @@ describe("renderServiceWrapper", () => {
       HERMES_HOME: "/data/hermes",
       HOME: "/home/alex",
       PATH: "/usr/local/bin:/usr/bin",
-      TOKENMAXXING_API_TOKEN: "tmx_secret",
-      TOKENMAXXING_ENV: "development",
+      NIGHTMAXXING_API_TOKEN: "tmx_secret",
+      NIGHTMAXXING_ENV: "development",
     });
     const wrapper = renderServiceWrapper({
       env,
-      logPath: "/home/alex/.config/tokenmaxxing/service.log",
+      logPath: "/home/alex/.config/nightmaxxing/service.log",
       platform: "linux",
-      runnerPointerPath: "/home/alex/.config/tokenmaxxing/service-runner-current",
+      runnerPointerPath: "/home/alex/.config/nightmaxxing/service-runner-current",
     });
 
     expect(wrapper).toContain(
-      "runner=$(tr -d '\\r\\n' < '/home/alex/.config/tokenmaxxing/service-runner-current')",
+      "runner=$(tr -d '\\r\\n' < '/home/alex/.config/nightmaxxing/service-runner-current')",
     );
-    expect(wrapper).toContain("[ ! -r '/home/alex/.config/tokenmaxxing/service-runner-current' ]");
+    expect(wrapper).toContain("[ ! -r '/home/alex/.config/nightmaxxing/service-runner-current' ]");
     expect(wrapper).toContain('"$runner" service run --scheduled');
     expect(wrapper).toContain("export HERMES_HOME='/data/hermes'");
     expect(wrapper).not.toContain("bun update");
     expect(wrapper).not.toContain("npm install");
     expect(wrapper).not.toContain("pnpm add");
     expect(wrapper).not.toContain("yarn global");
-    expect(wrapper).not.toContain("TOKENMAXXING_API_TOKEN");
+    expect(wrapper).not.toContain("NIGHTMAXXING_API_TOKEN");
     expect(wrapper).not.toContain("tmx_secret");
   });
 
   it("rotates POSIX service logs before appending", () => {
     const wrapper = renderServiceWrapper({
       env: { HOME: "/home/alex", PATH: "/usr/local/bin:/usr/bin" },
-      logPath: "/home/alex/.config/tokenmaxxing/service.log",
+      logPath: "/home/alex/.config/nightmaxxing/service.log",
       platform: "linux",
-      runnerPointerPath: "/home/alex/.config/tokenmaxxing/service-runner-current",
+      runnerPointerPath: "/home/alex/.config/nightmaxxing/service-runner-current",
     });
 
-    expect(wrapper).toContain("rotate_tokenmaxxing_log");
+    expect(wrapper).toContain("rotate_nightmaxxing_log");
     expect(wrapper).toContain('[ "$size" -lt 5242880 ] && return 0');
     expect(wrapper).toContain('rm -f "$log.3"');
     expect(wrapper).toContain('mv "$log" "$log.1"');
     expect(
-      wrapper.indexOf("rotate_tokenmaxxing_log '/home/alex/.config/tokenmaxxing/service.log'"),
-    ).toBeLessThan(wrapper.indexOf("} >> '/home/alex/.config/tokenmaxxing/service.log' 2>&1"));
+      wrapper.indexOf("rotate_nightmaxxing_log '/home/alex/.config/nightmaxxing/service.log'"),
+    ).toBeLessThan(wrapper.indexOf("} >> '/home/alex/.config/nightmaxxing/service.log' 2>&1"));
   });
 
   it("renders the matching auto-update command for each package manager", () => {
     expect(autoUpdateCommandDescription("bun")).toBe(
-      "bun update -g @851-labs/tokenmaxxing --latest --silent",
+      "bun update -g @nightrunners/nightmaxxing --latest --silent",
     );
     expect(autoUpdateCommandDescription("npm")).toBe(
-      "npm install -g @851-labs/tokenmaxxing@latest --silent",
+      "npm install -g @nightrunners/nightmaxxing@latest --silent",
     );
     expect(autoUpdateCommandDescription("pnpm")).toBe(
-      "pnpm add -g @851-labs/tokenmaxxing@latest --silent",
+      "pnpm add -g @nightrunners/nightmaxxing@latest --silent",
     );
     expect(autoUpdateCommandDescription("yarn")).toBe(
-      "yarn global add @851-labs/tokenmaxxing@latest --silent",
+      "yarn global add @nightrunners/nightmaxxing@latest --silent",
     );
   });
 
   it("renders Windows wrappers without package-manager updates", () => {
     const wrapper = renderServiceWrapper({
       env: { PATH: "/usr/bin" },
-      logPath: "/tmp/tokenmaxxing.log",
+      logPath: "/tmp/nightmaxxing.log",
       platform: "win32",
-      runnerPointerPath: "C:\\Users\\alex\\AppData\\Roaming\\tokenmaxxing\\service-runner-current",
+      runnerPointerPath: "C:\\Users\\alex\\AppData\\Roaming\\nightmaxxing\\service-runner-current",
     });
 
     expect(wrapper).not.toContain("bun update");
@@ -556,10 +558,10 @@ describe("renderServiceWrapper", () => {
     expect(wrapper).not.toContain("pnpm add");
     expect(wrapper).not.toContain("yarn global");
     expect(wrapper).toContain("if %%~zA GEQ 5242880");
-    expect(wrapper).toContain('"%TOKENMAXXING_LOG%.3"');
-    expect(wrapper).toContain('move /y "%TOKENMAXXING_LOG%.1" "%TOKENMAXXING_LOG%.2"');
-    expect(wrapper).toContain('move /y "%TOKENMAXXING_LOG%" "%TOKENMAXXING_LOG%.1"');
-    expect(wrapper).toContain("set /p TOKENMAXXING_SERVICE_RUNNER=<");
+    expect(wrapper).toContain('"%NIGHTMAXXING_LOG%.3"');
+    expect(wrapper).toContain('move /y "%NIGHTMAXXING_LOG%.1" "%NIGHTMAXXING_LOG%.2"');
+    expect(wrapper).toContain('move /y "%NIGHTMAXXING_LOG%" "%NIGHTMAXXING_LOG%.1"');
+    expect(wrapper).toContain("set /p NIGHTMAXXING_SERVICE_RUNNER=<");
     expect(wrapper).toContain("service run --scheduled");
   });
 });
@@ -567,14 +569,14 @@ describe("renderServiceWrapper", () => {
 describe("native scheduler templates", () => {
   it("renders five-minute launchd, systemd, and Windows schedules", () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing" },
       home: "/Users/alex",
       platform: "darwin",
     });
 
     expect(paths).not.toBeNull();
     const launchdPlist = renderLaunchdPlist(paths!);
-    expect(launchdPlist).toContain("<string>/tmp/tokenmaxxing/tokenmaxxing.sh</string>");
+    expect(launchdPlist).toContain("<string>/tmp/nightmaxxing/nightmaxxing.sh</string>");
     expect(launchdPlist).not.toContain("service-sync.sh");
     expect(launchdPlist).toContain("<key>StartInterval</key>");
     expect(launchdPlist).toContain("<integer>300</integer>");
@@ -585,7 +587,7 @@ describe("native scheduler templates", () => {
     expect(scheduleDescription()).toBe("syncs every 5 minutes");
 
     const windowsPaths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "C:\\Users\\alex\\AppData\\Roaming\\tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "C:\\Users\\alex\\AppData\\Roaming\\nightmaxxing" },
       home: "C:\\Users\\alex",
       platform: "win32",
     });
@@ -594,13 +596,13 @@ describe("native scheduler templates", () => {
     expect(windowsTaskCreateArgs(windowsPaths!)).toEqual([
       "/Create",
       "/TN",
-      "tokenmaxxing-sync",
+      "nightmaxxing-sync",
       "/SC",
       "MINUTE",
       "/MO",
       "5",
       "/TR",
-      '"C:\\Users\\alex\\AppData\\Roaming\\tokenmaxxing/service-sync.cmd"',
+      '"C:\\Users\\alex\\AppData\\Roaming\\nightmaxxing/service-sync.cmd"',
       "/F",
     ]);
   });
@@ -609,18 +611,18 @@ describe("native scheduler templates", () => {
 describe("legacyServiceWrapperPaths", () => {
   it("tracks old POSIX wrapper names for cleanup", () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing" },
       home: "/Users/alex",
       platform: "darwin",
     });
 
     expect(paths).not.toBeNull();
-    expect(legacyServiceWrapperPaths(paths!)).toEqual(["/tmp/tokenmaxxing/service-sync.sh"]);
+    expect(legacyServiceWrapperPaths(paths!)).toEqual(["/tmp/nightmaxxing/service-sync.sh"]);
   });
 
   it("does not add legacy cleanup paths for Windows task wrappers", () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "C:\\Users\\alex\\AppData\\Roaming\\tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "C:\\Users\\alex\\AppData\\Roaming\\nightmaxxing" },
       home: "C:\\Users\\alex",
       platform: "win32",
     });
@@ -633,11 +635,11 @@ describe("legacyServiceWrapperPaths", () => {
 describe("windowsTaskNames", () => {
   it("includes the current task and legacy daily task names for cleanup", () => {
     expect(windowsTaskNames()).toEqual([
-      "tokenmaxxing-sync",
-      "tokenmaxxing-sync-0900",
-      "tokenmaxxing-sync-1300",
-      "tokenmaxxing-sync-1700",
-      "tokenmaxxing-sync-2100",
+      "nightmaxxing-sync",
+      "nightmaxxing-sync-0900",
+      "nightmaxxing-sync-1300",
+      "nightmaxxing-sync-1700",
+      "nightmaxxing-sync-2100",
     ]);
   });
 });
@@ -771,17 +773,17 @@ describe("service repair helpers", () => {
 
   it("spawns deferred repairs quietly with json output and a reason", () => {
     expect(
-      deferredServiceRepairInvocation("/usr/local/bin/tokenmaxxing", "reload-required", "darwin"),
+      deferredServiceRepairInvocation("/usr/local/bin/nightmaxxing", "reload-required", "darwin"),
     ).toMatchObject({
       args: [
         "-c",
-        "sleep 2; exec '/usr/local/bin/tokenmaxxing' service repair --deferred --json --reason 'reload-required'",
+        "sleep 2; exec '/usr/local/bin/nightmaxxing' service repair --deferred --json --reason 'reload-required'",
       ],
       command: "sh",
     });
     expect(
       deferredServiceRepairInvocation(
-        "C:\\Users\\alex\\AppData\\Roaming\\npm\\tokenmaxxing.cmd",
+        "C:\\Users\\alex\\AppData\\Roaming\\npm\\nightmaxxing.cmd",
         "auto-updated",
         "win32",
       ).args.at(-1),
@@ -790,9 +792,9 @@ describe("service repair helpers", () => {
 
   it("schedules linux deferred repairs with systemd-run outside the current service cgroup", () => {
     expect(
-      deferredServiceRepairInvocation("/usr/local/bin/tokenmaxxing", "reload-required", "linux", {
+      deferredServiceRepairInvocation("/usr/local/bin/nightmaxxing", "reload-required", "linux", {
         PATH: "/usr/local/bin:/usr/bin",
-        TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing",
+        NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing",
       }),
     ).toMatchObject({
       args: [
@@ -800,10 +802,10 @@ describe("service repair helpers", () => {
         "--quiet",
         "--collect",
         "--on-active=2s",
-        "--unit=tokenmaxxing-sync-repair-reload-required",
+        "--unit=nightmaxxing-sync-repair-reload-required",
         "--setenv=PATH=/usr/local/bin:/usr/bin",
-        "--setenv=TOKENMAXXING_CONFIG_DIR=/tmp/tokenmaxxing",
-        "/usr/local/bin/tokenmaxxing",
+        "--setenv=NIGHTMAXXING_CONFIG_DIR=/tmp/nightmaxxing",
+        "/usr/local/bin/nightmaxxing",
         "service",
         "repair",
         "--deferred",
@@ -824,7 +826,7 @@ describe("service auto-update reports", () => {
   const metadata: ServiceMetadata = {
     autoUpdateManager: "npm",
     backend: "launchd",
-    commandPath: "/usr/local/bin/tokenmaxxing",
+    commandPath: "/usr/local/bin/nightmaxxing",
     installedAt: "2026-06-16T09:00:00.000Z",
     schedule: "syncs every 5 minutes",
     templateVersion: 2,
@@ -834,10 +836,10 @@ describe("service auto-update reports", () => {
   const registryMetadata: ServiceMetadata = {
     autoUpdateManager: "registry",
     backend: "launchd",
-    commandPath: "/tmp/tokenmaxxing/service-runners/0.4.12/darwin-arm64/tokenmaxxing",
+    commandPath: "/tmp/nightmaxxing/service-runners/0.4.12/darwin-arm64/nightmaxxing",
     installedAt: "2026-06-16T09:00:00.000Z",
-    runnerPackage: "@851-labs/tokenmaxxing-darwin-arm64",
-    runnerPath: "/tmp/tokenmaxxing/service-runners/0.4.12/darwin-arm64/tokenmaxxing",
+    runnerPackage: "@nightrunners/nightmaxxing-darwin-arm64",
+    runnerPath: "/tmp/nightmaxxing/service-runners/0.4.12/darwin-arm64/nightmaxxing",
     runnerTarget: "darwin-arm64",
     runnerVersion: "0.4.12",
     schedule: "syncs every 5 minutes",
@@ -848,8 +850,8 @@ describe("service auto-update reports", () => {
   function registryRelease(version = "0.4.13") {
     return {
       integrity: "sha512-test",
-      packageName: "@851-labs/tokenmaxxing-darwin-arm64",
-      tarballUrl: "https://registry.example/tokenmaxxing.tgz",
+      packageName: "@nightrunners/nightmaxxing-darwin-arm64",
+      tarballUrl: "https://registry.example/nightmaxxing.tgz",
       target: "darwin-arm64" as const,
       version,
     };
@@ -994,7 +996,7 @@ describe("service auto-update reports", () => {
 
   it("skips registry runner updates when the current runner is latest", async () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing" },
       home: "/Users/alex",
       platform: "darwin",
     });
@@ -1019,7 +1021,7 @@ describe("service auto-update reports", () => {
 
   it("fetches registry runner updates from the current release channel", async () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing" },
       home: "/Users/alex",
       platform: "darwin",
     })!;
@@ -1044,7 +1046,7 @@ describe("service auto-update reports", () => {
             installRunnerRelease: (release) =>
               Effect.succeed({
                 packageName: release.packageName,
-                path: `/tmp/tokenmaxxing/service-runners/${release.version}/darwin-arm64/tokenmaxxing`,
+                path: `/tmp/nightmaxxing/service-runners/${release.version}/darwin-arm64/nightmaxxing`,
                 target: release.target,
                 version: release.version,
               }),
@@ -1066,7 +1068,7 @@ describe("service auto-update reports", () => {
 
   it("does not install an older registry runner candidate", async () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing" },
       home: "/Users/alex",
       platform: "darwin",
     });
@@ -1093,7 +1095,7 @@ describe("service auto-update reports", () => {
 
   it("does not install a registry runner candidate from a different release channel", async () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing" },
       home: "/Users/alex",
       platform: "darwin",
     });
@@ -1120,7 +1122,7 @@ describe("service auto-update reports", () => {
 
   it("reports registry runner install failures without blocking sync", async () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing" },
       home: "/Users/alex",
       platform: "darwin",
     });
@@ -1146,11 +1148,11 @@ describe("service auto-update reports", () => {
   });
 
   it("falls back when preferred registry runner package metadata is missing", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-registry-update-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-registry-update-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: dir },
+        env: { NIGHTMAXXING_CONFIG_DIR: dir },
         home: "/Users/alex",
         platform: "darwin",
       })!;
@@ -1170,7 +1172,7 @@ describe("service auto-update reports", () => {
                   ? {
                       integrity: "sha512-test",
                       packageName: serviceRunnerPackageName(target),
-                      tarballUrl: "https://registry.example/tokenmaxxing.tgz",
+                      tarballUrl: "https://registry.example/nightmaxxing.tgz",
                       target,
                       version: "0.4.18-alpha.2",
                     }
@@ -1181,7 +1183,7 @@ describe("service auto-update reports", () => {
               installedTargets.push(release.target);
               return Effect.succeed({
                 packageName: release.packageName,
-                path: "/tmp/tokenmaxxing/service-runners/0.4.18-alpha.2/darwin-x64-baseline/tokenmaxxing",
+                path: "/tmp/nightmaxxing/service-runners/0.4.18-alpha.2/darwin-x64-baseline/nightmaxxing",
                 target: release.target,
                 version: release.version,
               });
@@ -1209,7 +1211,7 @@ describe("service auto-update reports", () => {
 
   it("does not fallback when preferred registry runner metadata fetch fails", async () => {
     const paths = servicePaths({
-      env: { TOKENMAXXING_CONFIG_DIR: "/tmp/tokenmaxxing" },
+      env: { NIGHTMAXXING_CONFIG_DIR: "/tmp/nightmaxxing" },
       home: "/Users/alex",
       platform: "darwin",
     });
@@ -1245,11 +1247,11 @@ describe("service auto-update reports", () => {
   });
 
   it("does not silently fallback after an integrity mismatch for a selected registry package", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-registry-update-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-registry-update-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: dir },
+        env: { NIGHTMAXXING_CONFIG_DIR: dir },
         home: "/Users/alex",
         platform: "darwin",
       })!;
@@ -1264,7 +1266,7 @@ describe("service auto-update reports", () => {
               return Effect.succeed({
                 integrity: "sha512-test",
                 packageName: serviceRunnerPackageName(target),
-                tarballUrl: "https://registry.example/tokenmaxxing.tgz",
+                tarballUrl: "https://registry.example/nightmaxxing.tgz",
                 target,
                 version: "0.4.13",
               });
@@ -1295,16 +1297,16 @@ describe("service auto-update reports", () => {
   });
 
   it("does not advance the runner pointer when registry update metadata write fails", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-registry-update-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-registry-update-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: dir },
+        env: { NIGHTMAXXING_CONFIG_DIR: dir },
         home: "/Users/alex",
         platform: "darwin",
       })!;
-      const oldRunnerPath = join(dir, "service-runners", "0.4.12", "darwin-arm64", "tokenmaxxing");
-      const newRunnerPath = join(dir, "service-runners", "0.4.13", "darwin-arm64", "tokenmaxxing");
+      const oldRunnerPath = join(dir, "service-runners", "0.4.12", "darwin-arm64", "nightmaxxing");
+      const newRunnerPath = join(dir, "service-runners", "0.4.13", "darwin-arm64", "nightmaxxing");
       await mkdir(dirname(oldRunnerPath), { recursive: true });
       await writeFile(oldRunnerPath, "#!/bin/sh\n");
       await writeFile(paths.runnerPointerPath, `${oldRunnerPath}\n`);
@@ -1767,18 +1769,18 @@ describe("service runner registry artifacts", () => {
     const runner = new TextEncoder().encode("#!/bin/sh\n");
     const tarball = makeTarball([
       { data: new TextEncoder().encode("{}"), path: "package/package.json" },
-      { data: runner, path: "package/bin/tokenmaxxing" },
+      { data: runner, path: "package/bin/nightmaxxing" },
     ]);
 
-    await expect(extractServiceRunnerFromTarball(tarball, "tokenmaxxing")).resolves.toEqual(runner);
+    await expect(extractServiceRunnerFromTarball(tarball, "nightmaxxing")).resolves.toEqual(runner);
   });
 
   it("rejects unsafe tar paths before installing runner bytes", async () => {
     const tarball = makeTarball([
-      { data: new TextEncoder().encode("bad"), path: "package/../tokenmaxxing" },
+      { data: new TextEncoder().encode("bad"), path: "package/../nightmaxxing" },
     ]);
 
-    await expect(extractServiceRunnerFromTarball(tarball, "tokenmaxxing")).rejects.toMatchObject({
+    await expect(extractServiceRunnerFromTarball(tarball, "nightmaxxing")).rejects.toMatchObject({
       _tag: "ServiceRunnerUpdateError",
     });
   });
@@ -1786,16 +1788,16 @@ describe("service runner registry artifacts", () => {
 
 describe("service runner installation", () => {
   it("copies an installed optional runner package into config-owned storage", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-runner-install-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-runner-install-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: join(dir, "config") },
+        env: { NIGHTMAXXING_CONFIG_DIR: join(dir, "config") },
         home: "/Users/alex",
         platform: "darwin",
       })!;
       const packageName = serviceRunnerPackageName("darwin-arm64");
-      const packageJsonPath = await writeFakeRunnerPackage(dir, packageName, "tokenmaxxing");
+      const packageJsonPath = await writeFakeRunnerPackage(dir, packageName, "nightmaxxing");
 
       const installed = await Effect.runPromise(
         installServiceRunnerFromOptionalPackage(paths, {
@@ -1810,7 +1812,7 @@ describe("service runner installation", () => {
         target: "darwin-arm64",
         version: "9.9.9",
       });
-      expect(installed.path).toBe(join(paths.runnersDir, "9.9.9", "darwin-arm64", "tokenmaxxing"));
+      expect(installed.path).toBe(join(paths.runnersDir, "9.9.9", "darwin-arm64", "nightmaxxing"));
       await expect(readFile(paths.runnerPointerPath, "utf8")).resolves.toBe(`${installed.path}\n`);
     } finally {
       await rm(dir, { force: true, recursive: true });
@@ -1818,16 +1820,16 @@ describe("service runner installation", () => {
   });
 
   it("can stage an installed optional runner package without advancing the pointer", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-runner-install-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-runner-install-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: join(dir, "config") },
+        env: { NIGHTMAXXING_CONFIG_DIR: join(dir, "config") },
         home: "/Users/alex",
         platform: "darwin",
       })!;
       const packageName = serviceRunnerPackageName("darwin-arm64");
-      const packageJsonPath = await writeFakeRunnerPackage(dir, packageName, "tokenmaxxing");
+      const packageJsonPath = await writeFakeRunnerPackage(dir, packageName, "nightmaxxing");
 
       const installed = await Effect.runPromise(
         installServiceRunnerFromOptionalPackage(paths, {
@@ -1846,16 +1848,16 @@ describe("service runner installation", () => {
   });
 
   it("copies a nested optional native package from a native main package install", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-runner-install-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-runner-install-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: join(dir, "config") },
+        env: { NIGHTMAXXING_CONFIG_DIR: join(dir, "config") },
         home: "/Users/alex",
         platform: "darwin",
       })!;
-      const mainPackageDir = join(dir, "global", "@851-labs", "tokenmaxxing");
-      const mainBinaryPath = join(mainPackageDir, "bin", "tokenmaxxing.exe");
+      const mainPackageDir = join(dir, "global", "@nightrunners", "nightmaxxing");
+      const mainBinaryPath = join(mainPackageDir, "bin", "nightmaxxing.exe");
       await mkdir(dirname(mainBinaryPath), { recursive: true });
       await writeFile(mainBinaryPath, "#!/bin/sh\n");
       await chmod(mainBinaryPath, 0o755);
@@ -1864,7 +1866,7 @@ describe("service runner installation", () => {
       const packageJsonPath = await writeFakeRunnerPackage(
         join(mainPackageDir, "node_modules"),
         packageName,
-        "tokenmaxxing",
+        "nightmaxxing",
       );
 
       await expect(
@@ -1891,11 +1893,11 @@ describe("service runner installation", () => {
   });
 
   it("falls back when the preferred optional package is absent but a candidate package exists", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-runner-install-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-runner-install-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: join(dir, "config") },
+        env: { NIGHTMAXXING_CONFIG_DIR: join(dir, "config") },
         home: "/Users/alex",
         platform: "darwin",
       })!;
@@ -1903,7 +1905,7 @@ describe("service runner installation", () => {
       const fallbackPackageJsonPath = await writeFakeRunnerPackage(
         dir,
         fallbackPackageName,
-        "tokenmaxxing",
+        "nightmaxxing",
       );
 
       const installed = await Effect.runPromise(
@@ -1924,18 +1926,18 @@ describe("service runner installation", () => {
   });
 
   it("falls back to a registry runner when no optional package is installed", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-runner-install-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-runner-install-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: join(dir, "config") },
+        env: { NIGHTMAXXING_CONFIG_DIR: join(dir, "config") },
         home: "/Users/alex",
         platform: "darwin",
       })!;
       const release = {
         integrity: "sha512-test",
         packageName: serviceRunnerPackageName("darwin-arm64"),
-        tarballUrl: "https://registry.example/tokenmaxxing.tgz",
+        tarballUrl: "https://registry.example/nightmaxxing.tgz",
         target: "darwin-arm64" as const,
         version: "1.2.3",
       };
@@ -1951,7 +1953,7 @@ describe("service runner installation", () => {
           installRunnerRelease: (candidateRelease) =>
             Effect.succeed({
               packageName: candidateRelease.packageName,
-              path: "/tmp/tokenmaxxing/service-runners/1.2.3/darwin-arm64/tokenmaxxing",
+              path: "/tmp/nightmaxxing/service-runners/1.2.3/darwin-arm64/nightmaxxing",
               target: candidateRelease.target,
               version: candidateRelease.version,
             }),
@@ -1972,11 +1974,11 @@ describe("service runner installation", () => {
   });
 
   it("tries registry runner candidates in order and reports all-missing clearly", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-runner-install-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-runner-install-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: join(dir, "config") },
+        env: { NIGHTMAXXING_CONFIG_DIR: join(dir, "config") },
         home: "/Users/alex",
         platform: "darwin",
       })!;
@@ -1995,7 +1997,7 @@ describe("service runner installation", () => {
                 ? {
                     integrity: "sha512-test",
                     packageName: serviceRunnerPackageName(target),
-                    tarballUrl: "https://registry.example/tokenmaxxing.tgz",
+                    tarballUrl: "https://registry.example/nightmaxxing.tgz",
                     target,
                     version: "1.2.3",
                   }
@@ -2005,7 +2007,7 @@ describe("service runner installation", () => {
           installRunnerRelease: (release) =>
             Effect.succeed({
               packageName: release.packageName,
-              path: "/tmp/tokenmaxxing/service-runners/1.2.3/darwin-x64-baseline/tokenmaxxing",
+              path: "/tmp/nightmaxxing/service-runners/1.2.3/darwin-x64-baseline/nightmaxxing",
               target: release.target,
               version: release.version,
             }),
@@ -2033,15 +2035,15 @@ describe("service runner installation", () => {
   });
 
   it("keeps an existing valid runner during repair before using registry fallback", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-runner-repair-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-runner-repair-"));
 
     try {
       const paths = servicePaths({
-        env: { TOKENMAXXING_CONFIG_DIR: join(dir, "config") },
+        env: { NIGHTMAXXING_CONFIG_DIR: join(dir, "config") },
         home: "/Users/alex",
         platform: "darwin",
       })!;
-      const existingRunnerPath = join(paths.runnersDir, "0.4.17", "darwin-arm64", "tokenmaxxing");
+      const existingRunnerPath = join(paths.runnersDir, "0.4.17", "darwin-arm64", "nightmaxxing");
       await mkdir(dirname(existingRunnerPath), { recursive: true });
       await writeFile(existingRunnerPath, "#!/bin/sh\n");
       await mkdir(dirname(paths.runnerPointerPath), { recursive: true });
@@ -2097,7 +2099,7 @@ describe("formatServiceStatusAutoUpdate", () => {
       formatServiceStatusAutoUpdate({
         autoUpdate: false,
         backend: "launchd",
-        commandPath: "/usr/local/bin/tokenmaxxing",
+        commandPath: "/usr/local/bin/nightmaxxing",
         installedAt: "2026-06-16T00:00:00.000Z",
         schedule: "daily",
         version: 1,
@@ -2107,7 +2109,7 @@ describe("formatServiceStatusAutoUpdate", () => {
       formatServiceStatusAutoUpdate({
         autoUpdateManager: "npm",
         backend: "launchd",
-        commandPath: "/usr/local/bin/tokenmaxxing",
+        commandPath: "/usr/local/bin/nightmaxxing",
         installedAt: "2026-06-16T00:00:00.000Z",
         schedule: "daily",
         version: 1,
@@ -2120,8 +2122,8 @@ describe("serviceInstallProgram", () => {
   it("starts browser login and installs the service when no stored token exists", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
     const { installed, pointerWrites, runtime, runner, written } = makeInstallRuntime();
@@ -2132,10 +2134,10 @@ describe("serviceInstallProgram", () => {
 
     expect(exit._tag).toBe("Success");
     expect(state.logs).toContain("Not logged in; starting browser login");
-    expect(state.browserUrls).toEqual(["https://tokenmaxxing.example/login/cli?code=ABC123"]);
+    expect(state.browserUrls).toEqual(["https://nightmaxxing.example/login/cli?code=ABC123"]);
     expect(state.writtenTokens).toEqual(["tmx_new"]);
-    expect(state.logs).toContain("Detecting tokenmaxxing install");
-    expect(state.logs).toContain("Found tokenmaxxing install");
+    expect(state.logs).toContain("Detecting nightmaxxing install");
+    expect(state.logs).toContain("Found nightmaxxing install");
     expect(state.logs).toContain("Installing service runner");
     expect(state.logs).toContain("Service runner installed (0.4.17/darwin-arm64)");
     expect(state.logs).toContain("Writing service files");
@@ -2143,15 +2145,15 @@ describe("serviceInstallProgram", () => {
     expect(state.logs).toContain("Installing scheduler");
     expect(state.logs).toContain("Scheduler installed");
     expect(state.madeClients).toEqual([
-      { baseUrl: "https://api.tokenmaxxing.example" },
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_new" },
+      { baseUrl: "https://api.nightmaxxing.example" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_new" },
     ]);
     expect(written).toHaveLength(1);
     expect(installed).toEqual([written[0]?.paths]);
     expect(pointerWrites).toEqual([{ paths: written[0]?.paths, runnerPath: runner.path }]);
     expect(written[0]?.metadata).toMatchObject({
       autoUpdateManager: "registry",
-      commandPath: "/tmp/tokenmaxxing/service-runners/0.4.17/darwin-arm64/tokenmaxxing",
+      commandPath: "/tmp/nightmaxxing/service-runners/0.4.17/darwin-arm64/nightmaxxing",
       installedAt: "2026-06-16T12:00:00.000Z",
       runnerTarget: "darwin-arm64",
       runnerVersion: "0.4.17",
@@ -2164,16 +2166,16 @@ describe("serviceInstallProgram", () => {
   it("installs the service when the package manager cannot be detected", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_existing",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
     const { installed, runtime, written } = makeInstallRuntime({
       install: {
         autoUpdateManager: null,
-        commandPath: "/usr/local/bin/tokenmaxxing",
-        resolvedCommandPath: "/usr/local/bin/tokenmaxxing",
+        commandPath: "/usr/local/bin/nightmaxxing",
+        resolvedCommandPath: "/usr/local/bin/nightmaxxing",
       },
     });
 
@@ -2192,12 +2194,12 @@ describe("serviceInstallProgram", () => {
   it("does not persist a discovered vite-plus runtime path into scheduled service files", async () => {
     const { layer } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_existing",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
-    const transientPath = "/Users/joel/.vite-plus/js_runtime/node/24.17.0/bin/tokenmaxxing";
+    const transientPath = "/Users/joel/.vite-plus/js_runtime/node/24.17.0/bin/nightmaxxing";
     const { runtime, runner, written } = makeInstallRuntime({
       install: {
         autoUpdateManager: "npm",
@@ -2213,16 +2215,16 @@ describe("serviceInstallProgram", () => {
     expect(exit._tag).toBe("Success");
     expect(written[0]?.metadata.commandPath).toBe(runner.path);
     expect(written[0]?.metadata.runnerPath).toBe(runner.path);
-    expect(written[0]?.wrapper).toContain("/tmp/tokenmaxxing/service-runner-current");
+    expect(written[0]?.wrapper).toContain("/tmp/nightmaxxing/service-runner-current");
     expect(written[0]?.wrapper).not.toContain(transientPath);
   });
 
   it("relogs in and continues installing when the stored token is revoked", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_old",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       meError: unauthorizedError(),
     });
@@ -2235,25 +2237,25 @@ describe("serviceInstallProgram", () => {
     expect(exit._tag).toBe("Success");
     expect(state.clearedTokens).toBe(1);
     expect(state.logs).toContain("Stored token is no longer valid; starting browser login");
-    expect(state.browserUrls).toEqual(["https://tokenmaxxing.example/login/cli?code=ABC123"]);
+    expect(state.browserUrls).toEqual(["https://nightmaxxing.example/login/cli?code=ABC123"]);
     expect(state.writtenTokens).toEqual(["tmx_new"]);
     expect(state.madeClients).toEqual([
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_old" },
-      { baseUrl: "https://api.tokenmaxxing.example" },
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_new" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_old" },
+      { baseUrl: "https://api.nightmaxxing.example" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_new" },
     ]);
     expect(written).toHaveLength(1);
     expect(installed).toEqual([written[0]?.paths]);
     expect(written[0]?.metadata).not.toHaveProperty("autoUpdate");
   });
 
-  it("still rejects TOKENMAXXING_API_TOKEN before starting login or installing", async () => {
+  it("still rejects NIGHTMAXXING_API_TOKEN before starting login or installing", async () => {
     const { layer, state } = makeTestLayer({
       envTokenActive: true,
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_env",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
     const { installed, runtime, written } = makeInstallRuntime();
@@ -2271,7 +2273,7 @@ describe("serviceInstallProgram", () => {
   });
 
   it("does not install while a service repair or runner update lock is active", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-install-lock-"));
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-install-lock-"));
 
     try {
       await writeFile(
@@ -2285,13 +2287,13 @@ describe("serviceInstallProgram", () => {
       );
       const { layer } = makeTestLayer({
         initialConfig: {
-          apiUrl: "https://api.tokenmaxxing.example",
+          apiUrl: "https://api.nightmaxxing.example",
           token: "tmx_existing",
-          wwwUrl: "https://tokenmaxxing.example",
+          wwwUrl: "https://nightmaxxing.example",
         },
       });
       const { installed, runtime, written } = makeInstallRuntime({
-        env: { TOKENMAXXING_CONFIG_DIR: dir },
+        env: { NIGHTMAXXING_CONFIG_DIR: dir },
       });
 
       const exit = await Effect.runPromiseExit(
@@ -2312,8 +2314,8 @@ describe("serviceInstallProgram", () => {
   it("does not install when login cannot run in a non-interactive shell", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       interactive: false,
     });
@@ -2335,8 +2337,8 @@ describe("serviceInstallProgram", () => {
   it("does not start browser login when service install runs with --json", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
     const { installed, runtime, written } = makeInstallRuntime();
@@ -2359,8 +2361,8 @@ describe("serviceInstallProgram", () => {
   it("refreshes service files without starting login", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       interactive: false,
     });
@@ -2373,8 +2375,8 @@ describe("serviceInstallProgram", () => {
     expect(exit._tag).toBe("Success");
     expect(state.browserUrls).toEqual([]);
     expect(state.writtenTokens).toEqual([]);
-    expect(state.logs).toContain("Detecting tokenmaxxing install");
-    expect(state.logs).toContain("Found tokenmaxxing install");
+    expect(state.logs).toContain("Detecting nightmaxxing install");
+    expect(state.logs).toContain("Found nightmaxxing install");
     expect(state.logs).toContain("Installing service runner");
     expect(state.logs).toContain("Service runner installed (0.4.17/darwin-arm64)");
     expect(state.logs).toContain("Writing service files");
@@ -2388,16 +2390,16 @@ describe("serviceInstallProgram", () => {
 });
 
 describe("command lookup", () => {
-  it("finds an executable tokenmaxxing binary on PATH", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-"));
+  it("finds an executable nightmaxxing binary on PATH", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-"));
 
     try {
-      const binary = join(dir, "tokenmaxxing");
+      const binary = join(dir, "nightmaxxing");
       await writeFile(binary, "#!/bin/sh\n");
       await chmod(binary, 0o755);
 
       await expect(
-        findCommandOnPath("tokenmaxxing", { PATH: ["/missing", dir].join(delimiter) }, "linux"),
+        findCommandOnPath("nightmaxxing", { PATH: ["/missing", dir].join(delimiter) }, "linux"),
       ).resolves.toBe(binary);
     } finally {
       await rm(dir, { force: true, recursive: true });
@@ -2405,37 +2407,37 @@ describe("command lookup", () => {
   });
 
   it("detects temporary package-runner paths", () => {
-    expect(isEphemeralCommandPath("/home/alex/.npm/_npx/123/node_modules/.bin/tokenmaxxing")).toBe(
-      true,
-    );
-    expect(isEphemeralCommandPath("/Users/alex/.bun/install/cache/@851-labs/tokenmaxxing")).toBe(
+    expect(isEphemeralCommandPath("/home/alex/.npm/_npx/123/node_modules/.bin/nightmaxxing")).toBe(
       true,
     );
     expect(
-      isEphemeralCommandPath("/Users/alex/.local/state/fnm_multishells/123/bin/tokenmaxxing"),
+      isEphemeralCommandPath("/Users/alex/.bun/install/cache/@nightrunners/nightmaxxing"),
     ).toBe(true);
-    expect(isEphemeralCommandPath("/usr/local/bin/tokenmaxxing")).toBe(false);
+    expect(
+      isEphemeralCommandPath("/Users/alex/.local/state/fnm_multishells/123/bin/nightmaxxing"),
+    ).toBe(true);
+    expect(isEphemeralCommandPath("/usr/local/bin/nightmaxxing")).toBe(false);
   });
 
   it("uses stable resolved paths only for transient command shims", () => {
-    const commandPath = "/Users/alex/.local/state/fnm_multishells/123/bin/tokenmaxxing";
+    const commandPath = "/Users/alex/.local/state/fnm_multishells/123/bin/nightmaxxing";
     const resolvedCommandPath =
-      "/Users/alex/.local/share/fnm/node-versions/v22.21.0/installation/lib/node_modules/@851-labs/tokenmaxxing/dist/index.js";
+      "/Users/alex/.local/share/fnm/node-versions/v22.21.0/installation/lib/node_modules/@nightrunners/nightmaxxing/dist/index.js";
 
     expect(isTransientCommandShimPath(commandPath)).toBe(true);
-    expect(durableTokenmaxxingCommandPath(commandPath, resolvedCommandPath)).toBe(
+    expect(durableNightmaxxingCommandPath(commandPath, resolvedCommandPath)).toBe(
       resolvedCommandPath,
     );
-    expect(durableTokenmaxxingCommandPath("/usr/local/bin/tokenmaxxing", resolvedCommandPath)).toBe(
-      "/usr/local/bin/tokenmaxxing",
+    expect(durableNightmaxxingCommandPath("/usr/local/bin/nightmaxxing", resolvedCommandPath)).toBe(
+      "/usr/local/bin/nightmaxxing",
     );
     expect(
-      durableTokenmaxxingCommandPath("/Users/alex/.volta/bin/tokenmaxxing", resolvedCommandPath),
-    ).toBe("/Users/alex/.volta/bin/tokenmaxxing");
+      durableNightmaxxingCommandPath("/Users/alex/.volta/bin/nightmaxxing", resolvedCommandPath),
+    ).toBe("/Users/alex/.volta/bin/nightmaxxing");
     expect(
-      durableTokenmaxxingCommandPath(
+      durableNightmaxxingCommandPath(
         commandPath,
-        "/Users/alex/.npm/_npx/123/node_modules/@851-labs/tokenmaxxing/dist/index.js",
+        "/Users/alex/.npm/_npx/123/node_modules/@nightrunners/nightmaxxing/dist/index.js",
       ),
     ).toBe(commandPath);
   });
@@ -2443,34 +2445,35 @@ describe("command lookup", () => {
   it("detects the package manager for common global install paths", () => {
     expect(
       detectAutoUpdateManager({
-        commandPath: "/Users/alex/.bun/bin/tokenmaxxing",
+        commandPath: "/Users/alex/.bun/bin/nightmaxxing",
         resolvedCommandPath:
-          "/Users/alex/.bun/install/global/node_modules/@851-labs/tokenmaxxing/dist/index.js",
+          "/Users/alex/.bun/install/global/node_modules/@nightrunners/nightmaxxing/dist/index.js",
       }),
     ).toBe("bun");
     expect(
       detectAutoUpdateManager({
-        commandPath: "/opt/homebrew/bin/tokenmaxxing",
-        resolvedCommandPath: "/opt/homebrew/lib/node_modules/@851-labs/tokenmaxxing/dist/index.js",
+        commandPath: "/opt/homebrew/bin/nightmaxxing",
+        resolvedCommandPath:
+          "/opt/homebrew/lib/node_modules/@nightrunners/nightmaxxing/dist/index.js",
       }),
     ).toBe("npm");
     expect(
       detectAutoUpdateManager({
-        commandPath: "/Users/alex/Library/pnpm/tokenmaxxing",
-        resolvedCommandPath: "/Users/alex/Library/pnpm/tokenmaxxing",
+        commandPath: "/Users/alex/Library/pnpm/nightmaxxing",
+        resolvedCommandPath: "/Users/alex/Library/pnpm/nightmaxxing",
       }),
     ).toBe("pnpm");
     expect(
       detectAutoUpdateManager({
-        commandPath: "/Users/alex/.yarn/bin/tokenmaxxing",
+        commandPath: "/Users/alex/.yarn/bin/nightmaxxing",
         resolvedCommandPath:
-          "/Users/alex/.config/yarn/global/node_modules/@851-labs/tokenmaxxing/dist/index.js",
+          "/Users/alex/.config/yarn/global/node_modules/@nightrunners/nightmaxxing/dist/index.js",
       }),
     ).toBe("yarn");
     expect(
       detectAutoUpdateManager({
-        commandPath: "/opt/custom/bin/tokenmaxxing",
-        resolvedCommandPath: "/opt/custom/bin/tokenmaxxing",
+        commandPath: "/opt/custom/bin/nightmaxxing",
+        resolvedCommandPath: "/opt/custom/bin/nightmaxxing",
       }),
     ).toBeNull();
   });

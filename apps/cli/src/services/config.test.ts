@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import { readConfigProgram } from "./config";
 
 describe("readConfigProgram", () => {
-  it("migrates legacy production domains to tokenmaxxing.sh", async () => {
+  it("migrates upstream production domains to maxxing.nrght.eu", async () => {
     const path = await tempConfigPath();
     await writeFile(
       path,
@@ -23,10 +23,10 @@ describe("readConfigProgram", () => {
     const config = await Effect.runPromise(readConfigProgram(path, {}));
 
     expect(config).toEqual({
-      apiUrl: "https://api.tokenmaxxing.sh",
+      apiUrl: "https://api.maxxing.nrght.eu",
       deviceId: "device_123",
       token: "tmx_123",
-      wwwUrl: "https://tokenmaxxing.sh",
+      wwwUrl: "https://maxxing.nrght.eu",
     });
   });
 
@@ -48,6 +48,6 @@ describe("readConfigProgram", () => {
 });
 
 async function tempConfigPath() {
-  const dir = await mkdtemp(join(tmpdir(), "tokenmaxxing-config-test-"));
+  const dir = await mkdtemp(join(tmpdir(), "nightmaxxing-config-test-"));
   return join(dir, "config.json");
 }

@@ -1,5 +1,5 @@
 import { Cause, Effect, Layer, Option } from "effect";
-import type { AuthUser } from "@tokenmaxxing/api-contract";
+import type { AuthUser } from "@nightmaxxing/api-contract";
 import { describe, expect, it } from "vitest";
 
 import { CcusageRunError } from "../ccusage/runner";
@@ -12,7 +12,7 @@ import {
   ConfigService,
   ConsoleService,
   TerminalService,
-  type TokenmaxxingApiClient,
+  type NightmaxxingApiClient,
 } from "../services";
 import { formatUrl } from "../output";
 import { browserLoginEffect } from "./login";
@@ -97,7 +97,7 @@ function makeTestLayer(options: TestLayerOptions) {
                 code: "ABC123",
                 expiresAt: "2026-06-13T20:00:00.000Z",
                 intervalSeconds: 0,
-                verificationUri: "https://tokenmaxxing.example/login/cli?code=ABC123",
+                verificationUri: "https://nightmaxxing.example/login/cli?code=ABC123",
               }),
           },
           me: {
@@ -115,7 +115,7 @@ function makeTestLayer(options: TestLayerOptions) {
               }),
             sync: () => Effect.succeed({ upserted: 0 }),
           },
-        } as unknown as TokenmaxxingApiClient);
+        } as unknown as NightmaxxingApiClient);
       },
     }),
     Layer.succeed(BrowserService)({
@@ -225,11 +225,11 @@ function makeUploadAuth(ingest: TestUsageIngest): SyncAuth {
       usage: {
         ingest,
       },
-    } as unknown as TokenmaxxingApiClient,
+    } as unknown as NightmaxxingApiClient,
     config: {
-      apiUrl: "https://api.tokenmaxxing.example",
+      apiUrl: "https://api.nightmaxxing.example",
       token: "tmx_test",
-      wwwUrl: "https://tokenmaxxing.example",
+      wwwUrl: "https://nightmaxxing.example",
     },
     user,
   };
@@ -442,8 +442,8 @@ describe("sync source outcomes", () => {
   it("continues with successful sources after a daily report failure", async () => {
     const { layer } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       interactive: false,
     });
@@ -471,8 +471,8 @@ describe("sync source outcomes", () => {
   it("uploads daily reports plus aggregate session counts without session payloads", async () => {
     const { layer } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       interactive: false,
     });
@@ -521,8 +521,8 @@ describe("sync source outcomes", () => {
   it("keeps daily rows when the session report fails", async () => {
     const { layer } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       interactive: false,
     });
@@ -559,8 +559,8 @@ describe("sync source outcomes", () => {
   it("does not overwrite lifetime session counts during a bounded sync", async () => {
     const { layer } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       interactive: false,
     });
@@ -596,8 +596,8 @@ describe("sync source outcomes", () => {
   it("treats a valid empty daily report as no data", async () => {
     const { layer } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       interactive: false,
     });
@@ -786,16 +786,16 @@ describe("uploadUsageReports", () => {
 
 describe("renderSyncSuccess", () => {
   it("renders a concise success message with a highlighted profile link", () => {
-    const output = renderSyncSuccess("https://tokenmaxxing.example/alex", { env: {} });
+    const output = renderSyncSuccess("https://nightmaxxing.example/alex", { env: {} });
 
     expect(output).toBe(
-      "\x1b[32mSync complete\x1b[0m\nProfile: \x1b[36;4mhttps://tokenmaxxing.example/alex\x1b[0m",
+      "\x1b[32mSync complete\x1b[0m\nProfile: \x1b[36;4mhttps://nightmaxxing.example/alex\x1b[0m",
     );
   });
 
   it("respects NO_COLOR", () => {
-    expect(renderSyncSuccess("https://tokenmaxxing.example/alex", { env: { NO_COLOR: "" } })).toBe(
-      "Sync complete\nProfile: https://tokenmaxxing.example/alex",
+    expect(renderSyncSuccess("https://nightmaxxing.example/alex", { env: { NO_COLOR: "" } })).toBe(
+      "Sync complete\nProfile: https://nightmaxxing.example/alex",
     );
   });
 });
@@ -804,8 +804,8 @@ describe("resolveSyncAuth", () => {
   it("keeps --json machine-readable by failing without browser login when no token exists", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
@@ -823,8 +823,8 @@ describe("resolveSyncAuth", () => {
     delete process.env.NO_COLOR;
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
@@ -841,20 +841,20 @@ describe("resolveSyncAuth", () => {
       const auth = exit.value;
       expect(auth.config.token).toBe("tmx_new");
       expect(auth.user.login).toBe("alex");
-      expect(state.browserUrls).toEqual(["https://tokenmaxxing.example/login/cli?code=ABC123"]);
+      expect(state.browserUrls).toEqual(["https://nightmaxxing.example/login/cli?code=ABC123"]);
       expect(state.writtenTokens).toEqual(["tmx_new"]);
       expect(state.madeClients).toEqual([
-        { baseUrl: "https://api.tokenmaxxing.example" },
-        { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_new" },
+        { baseUrl: "https://api.nightmaxxing.example" },
+        { baseUrl: "https://api.nightmaxxing.example", token: "tmx_new" },
       ]);
       expect(state.logs).toContain("Not logged in; starting browser login");
       expect(state.logs).toContain("Creating login code");
       expect(state.logs).toContain("Code: ABC123");
       expect(state.logs).toContain(
-        "Opening \x1b[36;4mhttps://tokenmaxxing.example/login/cli?code=ABC123\x1b[0m",
+        "Opening \x1b[36;4mhttps://nightmaxxing.example/login/cli?code=ABC123\x1b[0m",
       );
       expect(state.logs).toContain(
-        "Opened \x1b[36;4mhttps://tokenmaxxing.example/login/cli?code=ABC123\x1b[0m",
+        "Opened \x1b[36;4mhttps://nightmaxxing.example/login/cli?code=ABC123\x1b[0m",
       );
     } finally {
       if (originalNoColor === undefined) {
@@ -869,8 +869,8 @@ describe("resolveSyncAuth", () => {
     const { layer, state } = makeTestLayer({
       canOpenExternalBrowser: false,
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
@@ -881,7 +881,7 @@ describe("resolveSyncAuth", () => {
     expect(exit._tag).toBe("Success");
     expect(state.browserUrls).toEqual([]);
     expect(state.logs).toContain(
-      `Open ${formatUrl("https://tokenmaxxing.example/login/cli?code=ABC123")} in your browser to continue`,
+      `Open ${formatUrl("https://nightmaxxing.example/login/cli?code=ABC123")} in your browser to continue`,
     );
     expect(state.errors).toEqual([]);
     expect(state.writtenTokens).toEqual(["tmx_new"]);
@@ -891,8 +891,8 @@ describe("resolveSyncAuth", () => {
     const { layer, state } = makeTestLayer({
       browserOpenError: new BrowserOpenError({ cause: "xdg-open missing" }),
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
@@ -901,10 +901,10 @@ describe("resolveSyncAuth", () => {
     );
 
     expect(exit._tag).toBe("Success");
-    expect(state.browserUrls).toEqual(["https://tokenmaxxing.example/login/cli?code=ABC123"]);
+    expect(state.browserUrls).toEqual(["https://nightmaxxing.example/login/cli?code=ABC123"]);
     expect(state.errors).toContain("Could not open browser");
     expect(state.logs).toContain(
-      `Open ${formatUrl("https://tokenmaxxing.example/login/cli?code=ABC123")} in your browser to continue`,
+      `Open ${formatUrl("https://nightmaxxing.example/login/cli?code=ABC123")} in your browser to continue`,
     );
     expect(state.writtenTokens).toEqual(["tmx_new"]);
   });
@@ -912,9 +912,9 @@ describe("resolveSyncAuth", () => {
   it("clears a revoked stored token and restarts browser login for human sync", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_old",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       meError: unauthorizedError(),
     });
@@ -931,11 +931,11 @@ describe("resolveSyncAuth", () => {
     const auth = exit.value;
     expect(auth.config.token).toBe("tmx_new");
     expect(state.clearedTokens).toBe(1);
-    expect(state.browserUrls).toEqual(["https://tokenmaxxing.example/login/cli?code=ABC123"]);
+    expect(state.browserUrls).toEqual(["https://nightmaxxing.example/login/cli?code=ABC123"]);
     expect(state.madeClients).toEqual([
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_old" },
-      { baseUrl: "https://api.tokenmaxxing.example" },
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_new" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_old" },
+      { baseUrl: "https://api.nightmaxxing.example" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_new" },
     ]);
   });
 
@@ -943,9 +943,9 @@ describe("resolveSyncAuth", () => {
     const { layer, state } = makeTestLayer({
       envTokenActive: true,
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_env",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       meError: unauthorizedError(),
     });
@@ -963,9 +963,9 @@ describe("resolveSyncAuth", () => {
   it("keeps stored tokens when validation fails for network or server reasons", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_old",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
       meError: new Error("network unavailable"),
     });
@@ -983,7 +983,7 @@ describe("resolveSyncAuth", () => {
     expect(state.clearedTokens).toBe(0);
     expect(state.writtenTokens).toEqual([]);
     expect(state.madeClients).toEqual([
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_old" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_old" },
     ]);
     const error = Cause.findErrorOption(exit.cause);
     expect(Option.isSome(error)).toBe(true);
@@ -999,9 +999,9 @@ describe("resolveSyncAuth", () => {
     process.env.NO_COLOR = "";
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_old",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
@@ -1026,9 +1026,9 @@ describe("resolveSyncAuth", () => {
     process.env.NO_COLOR = "";
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
         token: "tmx_old",
-        wwwUrl: "https://tokenmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
@@ -1059,8 +1059,8 @@ describe("browserLoginEffect", () => {
     const { layer, state } = makeTestLayer({
       canOpenExternalBrowser: false,
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
@@ -1079,20 +1079,20 @@ describe("openProfileIfAvailable", () => {
   it("opens the profile URL when an external browser is available", async () => {
     const { layer, state } = makeTestLayer({
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
     await Effect.runPromise(
-      openProfileIfAvailable("https://tokenmaxxing.example/alex").pipe(Effect.provide(layer)),
+      openProfileIfAvailable("https://nightmaxxing.example/alex").pipe(Effect.provide(layer)),
     );
 
-    expect(state.browserUrls).toEqual(["https://tokenmaxxing.example/alex"]);
+    expect(state.browserUrls).toEqual(["https://nightmaxxing.example/alex"]);
     expect(state.errors).toEqual([]);
     expect(state.logs).toEqual([
       "Opening profile",
-      `Opened ${formatUrl("https://tokenmaxxing.example/alex")}`,
+      `Opened ${formatUrl("https://nightmaxxing.example/alex")}`,
     ]);
   });
 
@@ -1100,13 +1100,13 @@ describe("openProfileIfAvailable", () => {
     const { layer, state } = makeTestLayer({
       canOpenExternalBrowser: false,
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
     await Effect.runPromise(
-      openProfileIfAvailable("https://tokenmaxxing.example/alex").pipe(Effect.provide(layer)),
+      openProfileIfAvailable("https://nightmaxxing.example/alex").pipe(Effect.provide(layer)),
     );
 
     expect(state.browserUrls).toEqual([]);
@@ -1118,19 +1118,19 @@ describe("openProfileIfAvailable", () => {
     const { layer, state } = makeTestLayer({
       browserOpenError: new BrowserOpenError({ cause: "xdg-open missing" }),
       initialConfig: {
-        apiUrl: "https://api.tokenmaxxing.example",
-        wwwUrl: "https://tokenmaxxing.example",
+        apiUrl: "https://api.nightmaxxing.example",
+        wwwUrl: "https://nightmaxxing.example",
       },
     });
 
     await Effect.runPromise(
-      openProfileIfAvailable("https://tokenmaxxing.example/alex").pipe(Effect.provide(layer)),
+      openProfileIfAvailable("https://nightmaxxing.example/alex").pipe(Effect.provide(layer)),
     );
 
-    expect(state.browserUrls).toEqual(["https://tokenmaxxing.example/alex"]);
+    expect(state.browserUrls).toEqual(["https://nightmaxxing.example/alex"]);
     expect(state.errors).toContain("Could not open profile");
     expect(state.logs).toContain(
-      `Open ${formatUrl("https://tokenmaxxing.example/alex")} in your browser`,
+      `Open ${formatUrl("https://nightmaxxing.example/alex")} in your browser`,
     );
   });
 });

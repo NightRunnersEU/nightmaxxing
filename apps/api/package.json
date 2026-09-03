@@ -1,5 +1,5 @@
 {
-  "name": "@tokenmaxxing/api",
+  "name": "@nightmaxxing/api",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,8 +8,8 @@
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
-    "@tokenmaxxing/api-contract": "workspace:*",
-    "@tokenmaxxing/db": "workspace:*",
+    "@nightmaxxing/api-contract": "workspace:*",
+    "@nightmaxxing/db": "workspace:*",
     "drizzle-orm": "catalog:",
     "effect": "catalog:"
   },

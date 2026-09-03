@@ -6,7 +6,7 @@ import type {
   StatsRankedMetric,
   StatsResponse,
   StatsTotals,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 
 import {
   enumerateDays,
@@ -66,13 +66,13 @@ const Route = createFileRoute("/stats")({
   },
   head: () => ({
     meta: [
-      { title: "Stats - tokenmaxxing.sh" },
+      { title: "Stats - maxxing.nrght.eu" },
       {
         name: "description",
         content:
-          "Aggregate tokenmaxxing stats across tracked LLM agent spend, token volume, models, sources, and public leaderboard users.",
+          "Aggregate nightmaxxing stats across tracked LLM agent spend, token volume, models, sources, and public leaderboard users.",
       },
-      { property: "og:title", content: "tokenmaxxing.sh stats" },
+      { property: "og:title", content: "maxxing.nrght.eu stats" },
       {
         property: "og:description",
         content:
@@ -110,7 +110,7 @@ function StatsPage() {
             <p className="text-sm font-medium text-muted-foreground">
               Aggregate leaderboard telemetry
             </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">tokenmaxxing stats</h1>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">nightmaxxing stats</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
               Public totals across synced LLM agent usage. Spend is an API-equivalent estimate for
               comparison, not billing reconciliation.

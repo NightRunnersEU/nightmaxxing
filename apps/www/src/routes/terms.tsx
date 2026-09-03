@@ -4,12 +4,12 @@ import type { ReactNode } from "react";
 import { Code } from "../components/ui/code";
 import { SITE_ORIGIN } from "../lib/og";
 
-const GITHUB_URL = "https://github.com/851-labs/tokenmaxxing";
+const GITHUB_URL = "https://github.com/NightRunnersEU/nightmaxxing";
 const DISCORD_URL = "https://discord.gg/WzX6BpfaRH";
 
-const TERMS_TITLE = "Terms of Service — tokenmaxxing.sh";
+const TERMS_TITLE = "Terms of Service — maxxing.nrght.eu";
 const TERMS_DESCRIPTION =
-  "The terms for using tokenmaxxing.sh, the public leaderboard for LLM agent usage, provided as-is and free of charge.";
+  "The terms for using maxxing.nrght.eu, the public leaderboard for LLM agent usage, provided as-is and free of charge.";
 const TERMS_URL = new URL("/terms", SITE_ORIGIN).toString();
 
 const Route = createFileRoute("/terms")({
@@ -35,15 +35,15 @@ function TermsPage() {
 
       <div className="mt-10 space-y-8">
         <Section title="The service">
-          tokenmaxxing.sh is a public leaderboard for LLM agent usage. It is provided as-is and free
-          of charge. We may change, pause, or shut down the service at any time, and features may be
-          added or removed without notice.
+          maxxing.nrght.eu is a public leaderboard for LLM agent usage. It is provided as-is and
+          free of charge. We may change, pause, or shut down the service at any time, and features
+          may be added or removed without notice.
         </Section>
 
         <Section title="Accounts">
           You sign in through a third-party OAuth provider. You are responsible for activity under
           your account and for keeping your CLI tokens secure. CLI tokens do not expire
-          automatically; revoke them with <Code>tokenmaxxing logout</Code> or from your settings if
+          automatically; revoke them with <Code>nightmaxxing logout</Code> or from your settings if
           a device is lost or compromised.
         </Section>
 
@@ -75,7 +75,7 @@ function TermsPage() {
 
         <Section title="Disclaimers and liability">
           The service is provided &quot;as is&quot; and &quot;as available&quot;, without warranties
-          of any kind, express or implied. To the maximum extent permitted by law, tokenmaxxing and
+          of any kind, express or implied. To the maximum extent permitted by law, nightmaxxing and
           its maintainers are not liable for any indirect, incidental, or consequential damages
           arising from your use of the service.
         </Section>

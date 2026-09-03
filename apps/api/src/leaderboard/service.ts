@@ -5,7 +5,7 @@ import type {
   LeaderboardEntry,
   LeaderboardMetric,
   LeaderboardWindow,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 
 import type { DatabaseError } from "../database";
 
@@ -34,13 +34,13 @@ interface LeaderboardRepositoryShape {
 }
 
 class LeaderboardService extends Context.Service<LeaderboardService, LeaderboardServiceShape>()(
-  "@tokenmaxxing/api/LeaderboardService",
+  "@nightmaxxing/api/LeaderboardService",
 ) {}
 
 class LeaderboardRepository extends Context.Service<
   LeaderboardRepository,
   LeaderboardRepositoryShape
->()("@tokenmaxxing/api/LeaderboardRepository") {}
+>()("@nightmaxxing/api/LeaderboardRepository") {}
 
 /** Inclusive lower bound covering the trailing `days` calendar days (UTC). */
 function windowStart(window: typeof LeaderboardWindow.Type, now: Date): string | null {

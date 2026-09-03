@@ -2,7 +2,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
 
-import { runTokenmaxxingCommand } from "./commands/root";
+import { runNightmaxxingCommand } from "./commands/root";
 import { isJsonArgv, isVerboseArgv, renderCliFailure } from "./errors";
 import { CliServicesLive } from "./services";
 
@@ -32,7 +32,7 @@ function isCliArgvStarter(value: string) {
 function mainEffect(argv = defaultCliArgv()) {
   const normalizedArgv = normalizeRootVersionArgv(argv);
 
-  return runTokenmaxxingCommand(normalizedArgv).pipe(
+  return runNightmaxxingCommand(normalizedArgv).pipe(
     Effect.tapCause((cause) =>
       renderCliFailure(cause, {
         json: isJsonArgv(normalizedArgv),

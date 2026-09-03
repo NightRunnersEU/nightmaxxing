@@ -26,7 +26,7 @@ interface RawUsageObjectStoreShape {
 }
 
 class RawUsageObjectStore extends Context.Service<RawUsageObjectStore, RawUsageObjectStoreShape>()(
-  "@tokenmaxxing/api/RawUsageObjectStore",
+  "@nightmaxxing/api/RawUsageObjectStore",
 ) {
   static layer(bucket: R2BucketLike): Layer.Layer<RawUsageObjectStore> {
     return Layer.succeed(

@@ -1,4 +1,4 @@
-import { usageDays, users } from "@tokenmaxxing/db";
+import { usageDays, users } from "@nightmaxxing/db";
 import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { Layer } from "effect";

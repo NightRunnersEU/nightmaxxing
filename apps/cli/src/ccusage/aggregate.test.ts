@@ -203,7 +203,7 @@ describe("decodeSessionReport", () => {
       decodeSessionReport({
         sessions: [
           {
-            projectPath: "-Users-alexandru-repos-tokenmaxxing",
+            projectPath: "-Users-alexandru-repos-nightmaxxing",
             sessionId: "526bf0dc-1b30-4d8a-983c-ce90ed476fe8",
           },
           {

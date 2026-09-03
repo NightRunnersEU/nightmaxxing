@@ -19,9 +19,9 @@ import {
   CurrentUser,
   DEFAULT_LEADERBOARD_METRIC,
   DEFAULT_LEADERBOARD_WINDOW,
-  TokenmaxxingApi,
-} from "@tokenmaxxing/api-contract";
-import type { Authorization, CliAuth } from "@tokenmaxxing/api-contract";
+  NightmaxxingApi,
+} from "@nightmaxxing/api-contract";
+import type { Authorization, CliAuth } from "@nightmaxxing/api-contract";
 
 import { AppConfig } from "../config";
 import { cookieScopeFor, sessionTokenFrom } from "../auth/cookies";
@@ -42,7 +42,7 @@ import { oauthRoutesLayer } from "./routes/oauth";
  * "not implemented"; the contract still serves and typechecks end-to-end.
  */
 
-const healthHandlers = HttpApiBuilder.group(TokenmaxxingApi, "health", (handlers) =>
+const healthHandlers = HttpApiBuilder.group(NightmaxxingApi, "health", (handlers) =>
   handlers.handle("status", () =>
     Effect.gen(function* () {
       const config = yield* AppConfig;
@@ -55,7 +55,7 @@ const healthHandlers = HttpApiBuilder.group(TokenmaxxingApi, "health", (handlers
   ),
 );
 
-const meHandlers = HttpApiBuilder.group(TokenmaxxingApi, "me", (handlers) =>
+const meHandlers = HttpApiBuilder.group(NightmaxxingApi, "me", (handlers) =>
   handlers
     .handle("me", () =>
       Effect.gen(function* () {
@@ -110,7 +110,7 @@ const meHandlers = HttpApiBuilder.group(TokenmaxxingApi, "me", (handlers) =>
     ),
 );
 
-const cliLoginHandlers = HttpApiBuilder.group(TokenmaxxingApi, "cliLogin", (handlers) =>
+const cliLoginHandlers = HttpApiBuilder.group(NightmaxxingApi, "cliLogin", (handlers) =>
   handlers
     .handle("start", ({ payload }) =>
       Effect.gen(function* () {
@@ -128,7 +128,7 @@ const cliLoginHandlers = HttpApiBuilder.group(TokenmaxxingApi, "cliLogin", (hand
     ),
 );
 
-const usageHandlers = HttpApiBuilder.group(TokenmaxxingApi, "usage", (handlers) =>
+const usageHandlers = HttpApiBuilder.group(NightmaxxingApi, "usage", (handlers) =>
   handlers
     .handle("checkIn", ({ payload }) =>
       Effect.gen(function* () {
@@ -169,7 +169,7 @@ const usageHandlers = HttpApiBuilder.group(TokenmaxxingApi, "usage", (handlers) 
     ),
 );
 
-const leaderboardHandlers = HttpApiBuilder.group(TokenmaxxingApi, "leaderboard", (handlers) =>
+const leaderboardHandlers = HttpApiBuilder.group(NightmaxxingApi, "leaderboard", (handlers) =>
   handlers.handle("list", ({ query }) =>
     Effect.gen(function* () {
       const leaderboard = yield* LeaderboardService;
@@ -181,7 +181,7 @@ const leaderboardHandlers = HttpApiBuilder.group(TokenmaxxingApi, "leaderboard",
   ),
 );
 
-const profilesHandlers = HttpApiBuilder.group(TokenmaxxingApi, "profiles", (handlers) =>
+const profilesHandlers = HttpApiBuilder.group(NightmaxxingApi, "profiles", (handlers) =>
   handlers
     .handle("identity", ({ params }) =>
       Effect.gen(function* () {
@@ -227,7 +227,7 @@ function optionalCurrentUserId() {
   });
 }
 
-const statsHandlers = HttpApiBuilder.group(TokenmaxxingApi, "stats", (handlers) =>
+const statsHandlers = HttpApiBuilder.group(NightmaxxingApi, "stats", (handlers) =>
   handlers.handle("get", () =>
     Effect.gen(function* () {
       const stats = yield* StatsService;
@@ -236,7 +236,7 @@ const statsHandlers = HttpApiBuilder.group(TokenmaxxingApi, "stats", (handlers) 
   ),
 );
 
-const adminHandlers = HttpApiBuilder.group(TokenmaxxingApi, "admin", (handlers) =>
+const adminHandlers = HttpApiBuilder.group(NightmaxxingApi, "admin", (handlers) =>
   handlers
     .handle("listUsers", () =>
       Effect.gen(function* () {
@@ -288,7 +288,7 @@ interface ApiLayerOptions {
 
 function makeApiLayer(options: ApiLayerOptions) {
   const apiLayer = Layer.mergeAll(
-    HttpApiBuilder.layer(TokenmaxxingApi, { openapiPath: "/openapi.json" }),
+    HttpApiBuilder.layer(NightmaxxingApi, { openapiPath: "/openapi.json" }),
     oauthRoutesLayer,
   );
 

@@ -4,7 +4,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
 import { createIsomorphicFn } from "@tanstack/react-start";
-import { TokenmaxxingApi } from "@tokenmaxxing/api-contract";
+import { NightmaxxingApi } from "@nightmaxxing/api-contract";
 
 import { resolveApiUrl } from "./config";
 
@@ -14,10 +14,10 @@ import { resolveApiUrl } from "./config";
  * signatures — Effects stay inside this module; components never see them.
  */
 
-type TokenmaxxingApiClient = HttpApiClient.ForApi<typeof TokenmaxxingApi>;
+type NightmaxxingApiClient = HttpApiClient.ForApi<typeof NightmaxxingApi>;
 
 interface ApiClientHandle {
-  client(): Promise<TokenmaxxingApiClient>;
+  client(): Promise<NightmaxxingApiClient>;
   run<A, E>(effect: Effect.Effect<A, E, never>): Promise<A>;
 }
 
@@ -28,8 +28,8 @@ function createApiClient(apiUrl: string, requestInit: RequestInit): ApiClientHan
   );
   const runtime = ManagedRuntime.make(layer);
 
-  let cached: Promise<TokenmaxxingApiClient> | null = null;
-  const build = HttpApiClient.make(TokenmaxxingApi, {
+  let cached: Promise<NightmaxxingApiClient> | null = null;
+  const build = HttpApiClient.make(NightmaxxingApi, {
     baseUrl: apiUrl.replace(/\/$/, ""),
   });
 
@@ -68,7 +68,7 @@ async function serverRequestInit(): Promise<RequestInit> {
 }
 
 async function runApi<A, E>(
-  call: (client: TokenmaxxingApiClient) => Effect.Effect<A, E, never>,
+  call: (client: NightmaxxingApiClient) => Effect.Effect<A, E, never>,
 ): Promise<A> {
   const active = await clientHandle();
   const client = await active.client();

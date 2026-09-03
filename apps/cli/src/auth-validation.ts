@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import type { AuthUser } from "@tokenmaxxing/api-contract";
+import type { AuthUser } from "@nightmaxxing/api-contract";
 
 import {
   formatHighlight,
@@ -7,7 +7,7 @@ import {
   type FormatHighlightOptions,
   type HumanOutputOptions,
 } from "./output";
-import type { TokenmaxxingApiClient } from "./services";
+import type { NightmaxxingApiClient } from "./services";
 
 type ValidateCurrentLoginSuccessDisposition = "error" | "success";
 type ValidateCurrentLoginSuccessMessage = ((user: AuthUser) => string) | string | undefined;
@@ -24,7 +24,7 @@ type CurrentLoginValidation =
   | { _tag: "valid"; user: AuthUser };
 
 function validateCurrentLogin(
-  client: TokenmaxxingApiClient,
+  client: NightmaxxingApiClient,
   options: ValidateCurrentLoginOptions = {},
 ) {
   return Effect.gen(function* () {

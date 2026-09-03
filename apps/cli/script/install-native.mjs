@@ -22,7 +22,7 @@ const {
   supportsAvx2,
 } = launcher;
 
-const targetBinary = path.join(__dirname, "bin", "tokenmaxxing.exe");
+const targetBinary = path.join(__dirname, "bin", "nightmaxxing.exe");
 let packageJsonCache;
 
 function copyBinary(source, target = targetBinary) {
@@ -48,7 +48,7 @@ function installPackage(packageName, sourceBinary = binaryName()) {
     return false;
   }
 
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "tokenmaxxing-install-"));
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "nightmaxxing-install-"));
   try {
     const result = childProcess.spawnSync(
       "npm",
@@ -105,7 +105,7 @@ function installNativeBinary() {
   }
 
   throw new Error(
-    `It seems your package manager failed to install the right tokenmaxxing native package. Try manually installing ${packages
+    `It seems your package manager failed to install the right Nightmaxxing native package. Try manually installing ${packages
       .map((packageName) => JSON.stringify(packageName))
       .join(" or ")}.`,
   );

@@ -40,7 +40,7 @@ function ProfileOgCard({ data }: { data: ProfileOgData }) {
       <div aria-hidden="true" className="absolute left-0 right-0 top-[571px] h-px bg-border" />
       <div className="mx-14 flex h-full flex-col">
         <header className="flex h-[60px] shrink-0 items-center px-6">
-          <p className="text-3xl font-semibold">tokenmaxxing.sh</p>
+          <p className="text-3xl font-semibold">maxxing.nrght.eu</p>
         </header>
         <OgProfileHeader data={data} />
         <StatsGrid data={data} />

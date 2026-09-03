@@ -1,8 +1,8 @@
 import { Cause, Effect, Layer } from "effect";
-import type { AuthUser } from "@tokenmaxxing/api-contract";
+import type { AuthUser } from "@nightmaxxing/api-contract";
 import { describe, expect, it } from "vitest";
 
-import { ConsoleService, TerminalService, type TokenmaxxingApiClient } from "../services";
+import { ConsoleService, TerminalService, type NightmaxxingApiClient } from "../services";
 import {
   bootstrapProgram,
   BootstrapCancelledError,
@@ -20,18 +20,18 @@ const user: AuthUser = {
 
 const auth: SyncAuth = {
   authSource: "login",
-  client: {} as TokenmaxxingApiClient,
+  client: {} as NightmaxxingApiClient,
   config: {
-    apiUrl: "https://api.tokenmaxxing.example",
+    apiUrl: "https://api.nightmaxxing.example",
     token: "tmx_test",
-    wwwUrl: "https://tokenmaxxing.example",
+    wwwUrl: "https://nightmaxxing.example",
   },
   user,
 };
 
 const syncResult: SyncResult = {
   dryRun: false,
-  profileUrl: "https://tokenmaxxing.example/alex",
+  profileUrl: "https://nightmaxxing.example/alex",
   rows: 12,
   sourceResults: [],
   sources: {},
@@ -140,7 +140,7 @@ describe("bootstrapProgram", () => {
       "sync:alex",
       "confirm",
       "install-service",
-      "open:https://tokenmaxxing.example/alex",
+      "open:https://nightmaxxing.example/alex",
     ]);
   });
 
@@ -164,7 +164,7 @@ describe("bootstrapProgram", () => {
       "auth",
       "sync:alex",
       "confirm",
-      "open:https://tokenmaxxing.example/alex",
+      "open:https://nightmaxxing.example/alex",
     ]);
     expect(logs).toEqual([]);
   });
@@ -178,7 +178,7 @@ describe("bootstrapProgram", () => {
       "auth",
       "sync:alex",
       "install-service",
-      "open:https://tokenmaxxing.example/alex",
+      "open:https://nightmaxxing.example/alex",
     ]);
   });
 
@@ -187,7 +187,7 @@ describe("bootstrapProgram", () => {
 
     await runBootstrap(bootstrapProgram({ service: "no" }, runtime), { interactive: true });
 
-    expect(calls).toEqual(["auth", "sync:alex", "open:https://tokenmaxxing.example/alex"]);
+    expect(calls).toEqual(["auth", "sync:alex", "open:https://nightmaxxing.example/alex"]);
   });
 
   it("fails before login when non-interactive callers omit --service", async () => {
@@ -224,7 +224,7 @@ describe("bootstrapProgram", () => {
       "auth",
       "sync:alex",
       "confirm",
-      "open:https://tokenmaxxing.example/alex",
+      "open:https://nightmaxxing.example/alex",
     ]);
   });
 });

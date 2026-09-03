@@ -22,10 +22,10 @@
       },
     },
     "apps/api": {
-      "name": "@tokenmaxxing/api",
+      "name": "@nightmaxxing/api",
       "dependencies": {
-        "@tokenmaxxing/api-contract": "workspace:*",
-        "@tokenmaxxing/db": "workspace:*",
+        "@nightmaxxing/api-contract": "workspace:*",
+        "@nightmaxxing/db": "workspace:*",
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
       },
@@ -37,15 +37,15 @@
       },
     },
     "apps/cli": {
-      "name": "@851-labs/tokenmaxxing",
-      "version": "0.4.22",
+      "name": "@nightrunners/nightmaxxing",
+      "version": "0.1.0",
       "bin": {
-        "tokenmaxxing": "dist/index.js",
+        "nightmaxxing": "dist/index.js",
       },
       "devDependencies": {
         "@clack/prompts": "catalog:",
         "@effect/platform-node": "catalog:",
-        "@tokenmaxxing/api-contract": "workspace:*",
+        "@nightmaxxing/api-contract": "workspace:*",
         "@types/bun": "catalog:",
         "effect": "catalog:",
         "typescript": "catalog:",
@@ -53,17 +53,17 @@
       },
     },
     "apps/www": {
-      "name": "@tokenmaxxing/www",
+      "name": "@nightmaxxing/www",
       "dependencies": {
         "@base-ui-components/react": "catalog:",
         "@fontsource/geist-mono": "catalog:",
         "@fontsource/geist-sans": "catalog:",
+        "@nightmaxxing/api-contract": "workspace:*",
         "@phosphor-icons/react": "catalog:",
         "@tanstack/react-query": "catalog:",
         "@tanstack/react-router": "catalog:",
         "@tanstack/react-router-ssr-query": "catalog:",
         "@tanstack/react-start": "catalog:",
-        "@tokenmaxxing/api-contract": "workspace:*",
         "clsx": "^2.1.1",
         "effect": "catalog:",
         "react": "catalog:",
@@ -83,7 +83,7 @@
       },
     },
     "packages/api-contract": {
-      "name": "@tokenmaxxing/api-contract",
+      "name": "@nightmaxxing/api-contract",
       "dependencies": {
         "effect": "catalog:",
       },
@@ -94,7 +94,7 @@
       },
     },
     "packages/db": {
-      "name": "@tokenmaxxing/db",
+      "name": "@nightmaxxing/db",
       "dependencies": {
         "drizzle-orm": "catalog:",
       },
@@ -151,8 +151,6 @@
     "zod": "4.4.3",
   },
   "packages": {
-    "@851-labs/tokenmaxxing": ["@851-labs/tokenmaxxing@workspace:apps/cli"],
-
     "@alcalzone/ansi-tokenize": ["@alcalzone/ansi-tokenize@0.2.5", "", { "dependencies": { "ansi-styles": "^6.2.1", "is-fullwidth-code-point": "^5.0.0" } }, "sha512-3NX/MpTdroi0aKz134A6RC2Gb2iXVECN4QaAXnvCIxxIm3C3AVB1mkUe8NaaiyvOpDfsrqWhYtj+Q6a62RrTsw=="],
 
     "@alchemy.run/node-utils": ["@alchemy.run/node-utils@0.0.5", "", {}, "sha512-5agdhQxWBodxa5hDRyjnpx91RTU3g+qd5fxYB7uNDCaOzB0XC47UU/KHR6zf6jhz/NXf61gJS+vhYwn8NHeRoQ=="],
@@ -416,6 +414,16 @@
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.6", "", { "dependencies": { "@tybys/wasm-util": "^0.10.3" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg=="],
 
     "@neon-rs/load": ["@neon-rs/load@0.0.4", "", {}, "sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw=="],
+
+    "@nightmaxxing/api": ["@nightmaxxing/api@workspace:apps/api"],
+
+    "@nightmaxxing/api-contract": ["@nightmaxxing/api-contract@workspace:packages/api-contract"],
+
+    "@nightmaxxing/db": ["@nightmaxxing/db@workspace:packages/db"],
+
+    "@nightmaxxing/www": ["@nightmaxxing/www@workspace:apps/www"],
+
+    "@nightrunners/nightmaxxing": ["@nightrunners/nightmaxxing@workspace:apps/cli"],
 
     "@nodable/entities": ["@nodable/entities@2.2.0", "", {}, "sha512-9uGyhaQavEUMC8AIddIjau4NsnsXhou+j5sBAGojCM1oxmQpVKTWR/9JxABD6UAv12vpIms55fPZKFQEhG6uBg=="],
 
@@ -686,14 +694,6 @@
     "@tanstack/store": ["@tanstack/store@0.9.3", "", {}, "sha512-8reSzl/qGWGGVKhBoxXPMWzATSbZLZFWhwBAFO9NAyp0TxzfBP0mIrGb8CP8KrQTmvzXlR/vFPPUrHTLBGyFyw=="],
 
     "@tanstack/virtual-file-routes": ["@tanstack/virtual-file-routes@1.162.0", "", {}, "sha512-uhOeFyxLcU41HzvrxsGpiWdcMbScY1EDgbZ5K7DVRMYInbLYWAC0EA/kx9wXAoSM8q82bUG2hRl8+EAjE6XAbA=="],
-
-    "@tokenmaxxing/api": ["@tokenmaxxing/api@workspace:apps/api"],
-
-    "@tokenmaxxing/api-contract": ["@tokenmaxxing/api-contract@workspace:packages/api-contract"],
-
-    "@tokenmaxxing/db": ["@tokenmaxxing/db@workspace:packages/db"],
-
-    "@tokenmaxxing/www": ["@tokenmaxxing/www@workspace:apps/www"],
 
     "@turbo/darwin-64": ["@turbo/darwin-64@2.10.5", "", { "os": "darwin", "cpu": "x64" }, "sha512-ENvPwy3x5yS7MwNYHeWjqOBXkwIMp39Pd+/zXC6PoiNzF8EIvvLZOZZ+ny6L9x4WgS5vxUii2LM5gM+zjPdnWw=="],
 

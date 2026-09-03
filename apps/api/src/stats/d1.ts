@@ -1,9 +1,9 @@
-import { usageDays, users } from "@tokenmaxxing/db";
+import { usageDays, users } from "@nightmaxxing/db";
 import { and, asc, desc, eq, gte, isNull, sql, type SQL } from "drizzle-orm";
 import { Effect } from "effect";
 import { Layer } from "effect";
 
-import type { StatsTotals } from "@tokenmaxxing/api-contract";
+import type { StatsTotals } from "@nightmaxxing/api-contract";
 
 import { Drizzle } from "../database";
 import { STATS_2026_START, StatsRepository } from "./service";

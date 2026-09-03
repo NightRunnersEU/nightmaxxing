@@ -28,7 +28,7 @@ import type {
   ServiceCheckInStatusValue,
   ServiceRepairReasonValue,
   ServiceRepairStatusValue,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 
 import { ClockService, ConfigService, ConsoleService } from "../services";
 import { getConfigPath } from "../services/config";
@@ -59,14 +59,14 @@ const execFilePromise = promisify(execFile);
 const gunzipPromise = promisify(gunzip);
 const require = createRequire(import.meta.url);
 
-const SERVICE_LABEL = "sh.tokenmaxxing.sync";
+const SERVICE_LABEL = "sh.nightmaxxing.sync";
 const SERVICE_TEMPLATE_VERSION = 5;
-const SYSTEMD_NAME = "tokenmaxxing-sync";
-const WINDOWS_TASK_NAME = "tokenmaxxing-sync";
-const POSIX_WRAPPER_NAME = "tokenmaxxing.sh";
+const SYSTEMD_NAME = "nightmaxxing-sync";
+const WINDOWS_TASK_NAME = "nightmaxxing-sync";
+const POSIX_WRAPPER_NAME = "nightmaxxing.sh";
 const LEGACY_POSIX_WRAPPER_NAME = "service-sync.sh";
 const WINDOWS_WRAPPER_NAME = "service-sync.cmd";
-const PACKAGE_NAME = "@851-labs/tokenmaxxing";
+const PACKAGE_NAME = "@nightrunners/nightmaxxing";
 const SERVICE_RUNNER_DIR_NAME = "service-runners";
 const SERVICE_RUNNER_POINTER_NAME = "service-runner-current";
 const SERVICE_LOCK_STALE_MS = 2 * 60 * 60 * 1000;
@@ -81,7 +81,7 @@ const SERVICE_VERSION_TIMEOUT_MS = 30 * 1000;
 const SERVICE_LOG_MAX_BYTES = 5 * 1024 * 1024;
 const SERVICE_LOG_ROTATIONS = 3;
 const USAGE_REPLACEMENT_BACKFILL_VERSION = 1;
-const NPM_LATEST_URL = "https://registry.npmjs.org/@851-labs%2Ftokenmaxxing/latest";
+const NPM_LATEST_URL = "https://registry.npmjs.org/@nightrunners%2Fnightmaxxing/latest";
 const SERVICE_UPLOAD_RETRY_POLICY: UploadRetryPolicy = {
   attempts: 3,
   backoffMs: [1_000, 4_000, 16_000],
@@ -340,19 +340,19 @@ class ServiceUnsupportedPlatformError extends Data.TaggedError("ServiceUnsupport
 
 class ServiceEnvTokenError extends Data.TaggedError("ServiceEnvTokenError")<{}> {
   override message =
-    "error: service install needs a stored login, not TOKENMAXXING_API_TOKEN\nhint: unset TOKENMAXXING_API_TOKEN, run tokenmaxxing login, then run tokenmaxxing service install";
+    "error: service install needs a stored login, not NIGHTMAXXING_API_TOKEN\nhint: unset NIGHTMAXXING_API_TOKEN, run nightmaxxing login, then run nightmaxxing service install";
 }
 
 class ServiceCommandNotFoundError extends Data.TaggedError("ServiceCommandNotFoundError")<{}> {
   override message =
-    "error: tokenmaxxing is not installed globally\nhint: install it with bun, npm, pnpm, or yarn, then run tokenmaxxing service install";
+    "error: nightmaxxing is not installed globally\nhint: install it with bun, npm, pnpm, or yarn, then run nightmaxxing service install";
 }
 
 class ServiceEphemeralCommandError extends Data.TaggedError("ServiceEphemeralCommandError")<{
   readonly commandPath: string;
 }> {
   override get message() {
-    return `error: tokenmaxxing resolved to a temporary runner path\npath: ${this.commandPath}\nhint: install it globally with bun, npm, pnpm, or yarn, then run tokenmaxxing service install`;
+    return `error: nightmaxxing resolved to a temporary runner path\npath: ${this.commandPath}\nhint: install it globally with bun, npm, pnpm, or yarn, then run nightmaxxing service install`;
   }
 }
 
@@ -363,7 +363,7 @@ class ServiceRunnerUnsupportedTargetError extends Data.TaggedError(
   readonly platform: NodeJS.Platform;
 }> {
   override get message() {
-    return `error: tokenmaxxing service runner is not available for ${this.platform}/${this.arch}\nhint: supported runners are ${serviceRunnerTargets.join(", ")}`;
+    return `error: nightmaxxing service runner is not available for ${this.platform}/${this.arch}\nhint: supported runners are ${serviceRunnerTargets.join(", ")}`;
   }
 }
 
@@ -380,7 +380,7 @@ class ServiceRunnerPackageMissingError extends Data.TaggedError(
       packageNames.length === 0
         ? "for this platform"
         : packageNames.map((name) => `\`${name}\``).join(", ");
-    return `error: missing service runner package ${packageList}\nhint: reinstall @851-labs/tokenmaxxing or retry so tokenmaxxing can fetch the platform runner package`;
+    return `error: missing service runner package ${packageList}\nhint: reinstall @nightrunners/nightmaxxing or retry so nightmaxxing can fetch the platform runner package`;
   }
 }
 
@@ -404,28 +404,28 @@ class ServiceInstallError extends Data.TaggedError("ServiceInstallError")<{
   readonly cause: unknown;
 }> {
   override message =
-    "error: failed to install tokenmaxxing service\nhint: rerun with --verbose or install manually from the generated files";
+    "error: failed to install nightmaxxing service\nhint: rerun with --verbose or install manually from the generated files";
 }
 
 class ServiceUninstallError extends Data.TaggedError("ServiceUninstallError")<{
   readonly cause: unknown;
 }> {
   override message =
-    "error: failed to uninstall tokenmaxxing service\nhint: rerun with --verbose and remove the scheduler entry manually";
+    "error: failed to uninstall nightmaxxing service\nhint: rerun with --verbose and remove the scheduler entry manually";
 }
 
 class ServiceRunError extends Data.TaggedError("ServiceRunError")<{
   readonly cause: unknown;
 }> {
   override message =
-    "error: tokenmaxxing service run failed\nhint: inspect the service log for details";
+    "error: nightmaxxing service run failed\nhint: inspect the service log for details";
 }
 
 class ServiceRepairError extends Data.TaggedError("ServiceRepairError")<{
   readonly cause: unknown;
 }> {
   override message =
-    "error: failed to repair tokenmaxxing service\nhint: rerun tokenmaxxing service doctor --verbose";
+    "error: failed to repair nightmaxxing service\nhint: rerun nightmaxxing service doctor --verbose";
 }
 
 const installCommand = Command.make(
@@ -535,18 +535,18 @@ function serviceInstallProgram(
     const env = runtime.env ?? process.env;
     const platform = runtime.platform ?? process.platform;
     const paths = yield* servicePathsEffect(env, runtime.home, platform);
-    const installSpinner = yield* humanSpinner("Detecting tokenmaxxing install", options);
+    const installSpinner = yield* humanSpinner("Detecting nightmaxxing install", options);
     yield* (
-      runtime.findCommandInstall ?? (() => findTokenmaxxingCommandInstall(env, platform))
+      runtime.findCommandInstall ?? (() => findNightmaxxingCommandInstall(env, platform))
     )().pipe(
       Effect.flatMap((install) =>
         install === null ? Effect.fail(new ServiceCommandNotFoundError()) : Effect.succeed(install),
       ),
       Effect.tapError(() =>
-        Effect.sync(() => installSpinner.error("Could not find tokenmaxxing install")),
+        Effect.sync(() => installSpinner.error("Could not find nightmaxxing install")),
       ),
     );
-    yield* Effect.sync(() => installSpinner.stop("Found tokenmaxxing install"));
+    yield* Effect.sync(() => installSpinner.stop("Found nightmaxxing install"));
 
     const updateLock = yield* acquireServiceUpdateLock(
       paths.updateLockPath,
@@ -791,7 +791,7 @@ function repairServiceProgram(options: ServiceRepairOptions = {}) {
           if (!nativeStatus.active) {
             return yield* Effect.fail(
               new ServiceRepairError({
-                cause: "launchd scheduler repair requires foreground tokenmaxxing service repair",
+                cause: "launchd scheduler repair requires foreground nightmaxxing service repair",
               }),
             );
           }
@@ -1052,7 +1052,7 @@ function serviceDoctorEffect(options: { json?: boolean | undefined } = {}) {
         paths.definitionPath === null ? installed : yield* fileExists(paths.definitionPath);
       const metadataCommandExists =
         metadata?.commandPath === undefined ? false : yield* fileExists(metadata.commandPath);
-      const currentCommand = yield* findTokenmaxxingCommandInstall().pipe(
+      const currentCommand = yield* findNightmaxxingCommandInstall().pipe(
         Effect.catch(() => Effect.succeed(null)),
       );
       const autoUpdateManager =
@@ -1591,7 +1591,7 @@ function serviceRepairCheckInFromState(
 }
 
 function serviceRepairCommand(): string {
-  return "tokenmaxxing service repair";
+  return "nightmaxxing service repair";
 }
 
 function scheduleDeferredServiceRepair(
@@ -3268,7 +3268,7 @@ function formatInstallAutoUpdate(manager: ServiceMetadataAutoUpdateManager | nul
 
 function doctorAuthDetail(envToken: boolean, authConfig: DoctorAuthConfig): string {
   if (envToken) {
-    return "TOKENMAXXING_API_TOKEN is set; service install needs stored login instead";
+    return "NIGHTMAXXING_API_TOKEN is set; service install needs stored login instead";
   }
 
   if (authConfig._tag === "error") {
@@ -3276,7 +3276,7 @@ function doctorAuthDetail(envToken: boolean, authConfig: DoctorAuthConfig): stri
   }
 
   if (!authConfig.value.token) {
-    return "stored token missing; run tokenmaxxing login";
+    return "stored token missing; run nightmaxxing login";
   }
 
   return authConfig.value.deviceId === undefined
@@ -3299,7 +3299,7 @@ function doctorBinaryDetail(
     return `${currentCommand.commandPath} -> ${currentCommand.resolvedCommandPath}`;
   }
 
-  return "tokenmaxxing not found on PATH";
+  return "nightmaxxing not found on PATH";
 }
 
 function doctorAutoUpdateDetail(
@@ -3831,14 +3831,14 @@ ${exports}
 ${renderPosixLogRotation(logPath)}
 
 {
-  printf '\\n[%s] tokenmaxxing service sync\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '\\n[%s] nightmaxxing service sync\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   if [ ! -r ${shellQuote(runnerPointerPath)} ]; then
-    printf 'tokenmaxxing service runner pointer missing: %s\\n' ${shellQuote(runnerPointerPath)} >&2
+    printf 'nightmaxxing service runner pointer missing: %s\\n' ${shellQuote(runnerPointerPath)} >&2
     exit 127
   fi
   runner=$(tr -d '\\r\\n' < ${shellQuote(runnerPointerPath)})
   if [ -z "$runner" ] || [ ! -x "$runner" ]; then
-    printf 'tokenmaxxing service runner missing or not executable: %s\\n' "$runner" >&2
+    printf 'nightmaxxing service runner missing or not executable: %s\\n' "$runner" >&2
     exit 127
   fi
   "$runner" ${serviceRunCommandArgs()}
@@ -3849,7 +3849,7 @@ ${renderPosixLogRotation(logPath)}
 function renderPosixLogRotation(logPath: string): string {
   const quotedLogPath = shellQuote(logPath);
 
-  return `rotate_tokenmaxxing_log() {
+  return `rotate_nightmaxxing_log() {
   log=$1
   [ -f "$log" ] || return 0
   size=$(wc -c < "$log" 2>/dev/null | tr -d ' ' || printf '0')
@@ -3870,7 +3870,7 @@ function renderPosixLogRotation(logPath: string): string {
   mv "$log" "$log.1" 2>/dev/null || true
 }
 
-rotate_tokenmaxxing_log ${quotedLogPath} || true`;
+rotate_nightmaxxing_log ${quotedLogPath} || true`;
 }
 
 function renderWindowsWrapper({
@@ -3890,17 +3890,17 @@ function renderWindowsWrapper({
 setlocal\r
 ${sets}\r
 ${renderWindowsLogRotation(logPath)}\r
->> ${cmdQuote(logPath)} echo [%DATE% %TIME%] tokenmaxxing service sync\r
-set /p TOKENMAXXING_SERVICE_RUNNER=<${cmdQuote(runnerPointerPath)}\r
-if "%TOKENMAXXING_SERVICE_RUNNER%"=="" (\r
-  >> ${cmdQuote(logPath)} echo tokenmaxxing service runner pointer is empty\r
+>> ${cmdQuote(logPath)} echo [%DATE% %TIME%] nightmaxxing service sync\r
+set /p NIGHTMAXXING_SERVICE_RUNNER=<${cmdQuote(runnerPointerPath)}\r
+if "%NIGHTMAXXING_SERVICE_RUNNER%"=="" (\r
+  >> ${cmdQuote(logPath)} echo nightmaxxing service runner pointer is empty\r
   exit /b 127\r
 )\r
-if not exist "%TOKENMAXXING_SERVICE_RUNNER%" (\r
-  >> ${cmdQuote(logPath)} echo tokenmaxxing service runner missing: %TOKENMAXXING_SERVICE_RUNNER%\r
+if not exist "%NIGHTMAXXING_SERVICE_RUNNER%" (\r
+  >> ${cmdQuote(logPath)} echo nightmaxxing service runner missing: %NIGHTMAXXING_SERVICE_RUNNER%\r
   exit /b 127\r
 )\r
-"%TOKENMAXXING_SERVICE_RUNNER%" ${serviceRunCommandArgs()} >> ${cmdQuote(logPath)} 2>&1\r
+"%NIGHTMAXXING_SERVICE_RUNNER%" ${serviceRunCommandArgs()} >> ${cmdQuote(logPath)} 2>&1\r
 exit /b %ERRORLEVEL%\r
 `;
 }
@@ -3911,14 +3911,14 @@ function renderWindowsLogRotation(logPath: string): string {
     const rotation = SERVICE_LOG_ROTATIONS - index;
     const previousRotation = rotation - 1;
 
-    return `  if exist "%TOKENMAXXING_LOG%.${previousRotation}" move /y "%TOKENMAXXING_LOG%.${previousRotation}" "%TOKENMAXXING_LOG%.${rotation}" >nul 2>nul`;
+    return `  if exist "%NIGHTMAXXING_LOG%.${previousRotation}" move /y "%NIGHTMAXXING_LOG%.${previousRotation}" "%NIGHTMAXXING_LOG%.${rotation}" >nul 2>nul`;
   }).join("\r\n");
 
-  return `set "TOKENMAXXING_LOG=${escapeCmdSetValue(logPath)}"\r
+  return `set "NIGHTMAXXING_LOG=${escapeCmdSetValue(logPath)}"\r
 if exist ${quotedLogPath} for %%A in (${quotedLogPath}) do if %%~zA GEQ ${SERVICE_LOG_MAX_BYTES} (\r
-  if exist "%TOKENMAXXING_LOG%.${SERVICE_LOG_ROTATIONS}" del /f /q "%TOKENMAXXING_LOG%.${SERVICE_LOG_ROTATIONS}" >nul 2>nul\r
+  if exist "%NIGHTMAXXING_LOG%.${SERVICE_LOG_ROTATIONS}" del /f /q "%NIGHTMAXXING_LOG%.${SERVICE_LOG_ROTATIONS}" >nul 2>nul\r
 ${moves}\r
-  move /y "%TOKENMAXXING_LOG%" "%TOKENMAXXING_LOG%.1" >nul 2>nul\r
+  move /y "%NIGHTMAXXING_LOG%" "%NIGHTMAXXING_LOG%.1" >nul 2>nul\r
 )`;
 }
 
@@ -3946,7 +3946,7 @@ function renderLaunchdPlist(paths: ServicePaths): string {
 
 function renderSystemdService(paths: ServicePaths): string {
   return `[Unit]
-Description=tokenmaxxing automatic usage sync
+Description=nightmaxxing automatic usage sync
 
 [Service]
 Type=oneshot
@@ -3956,7 +3956,7 @@ ExecStart=${systemdQuote(paths.wrapperPath)}
 
 function renderSystemdTimer(): string {
   return `[Unit]
-Description=Run tokenmaxxing automatic usage sync
+Description=Run nightmaxxing automatic usage sync
 
 [Timer]
 ${renderSystemdTimerSchedule()}
@@ -4118,19 +4118,19 @@ function runExecutable(
   });
 }
 
-function findTokenmaxxingCommandInstall(
+function findNightmaxxingCommandInstall(
   env: Record<string, string | undefined> = process.env,
   platform: NodeJS.Platform = process.platform,
 ): Effect.Effect<CommandInstall | null, unknown> {
   return Effect.tryPromise({
     try: async () => {
-      const commandPath = await findCommandOnPath("tokenmaxxing", env, platform);
+      const commandPath = await findCommandOnPath("nightmaxxing", env, platform);
       if (commandPath === null) {
         return null;
       }
 
       const resolvedCommandPath = await resolveCommandPath(commandPath);
-      const durableCommandPath = durableTokenmaxxingCommandPath(commandPath, resolvedCommandPath);
+      const durableCommandPath = durableNightmaxxingCommandPath(commandPath, resolvedCommandPath);
 
       return {
         autoUpdateManager: detectAutoUpdateManager({
@@ -4205,10 +4205,10 @@ function capturedServiceEnv(
     "LOCALAPPDATA",
     "APPDATA",
     "HERMES_HOME",
-    "TOKENMAXXING_CONFIG_DIR",
-    "TOKENMAXXING_ENV",
-    "TOKENMAXXING_API_URL",
-    "TOKENMAXXING_WWW_URL",
+    "NIGHTMAXXING_CONFIG_DIR",
+    "NIGHTMAXXING_ENV",
+    "NIGHTMAXXING_API_URL",
+    "NIGHTMAXXING_WWW_URL",
   ]) {
     const value = env[key];
     if (value !== undefined && value !== "") {
@@ -4236,9 +4236,9 @@ function isEphemeralCommandPath(path: string): boolean {
   );
 }
 
-function durableTokenmaxxingCommandPath(commandPath: string, resolvedCommandPath: string): string {
+function durableNightmaxxingCommandPath(commandPath: string, resolvedCommandPath: string): string {
   return isTransientCommandShimPath(commandPath) &&
-    isDurableTokenmaxxingPackagePath(resolvedCommandPath)
+    isDurableNightmaxxingPackagePath(resolvedCommandPath)
     ? resolvedCommandPath
     : commandPath;
 }
@@ -4251,11 +4251,12 @@ function isTransientCommandShimPath(path: string): boolean {
   return normalized.includes("/.local/state/fnm_multishells/");
 }
 
-function isDurableTokenmaxxingPackagePath(path: string): boolean {
+function isDurableNightmaxxingPackagePath(path: string): boolean {
   const normalized = normalizePathForDetection(path);
 
   return (
-    normalized.includes("/node_modules/@851-labs/tokenmaxxing/") && !isEphemeralCommandPath(path)
+    normalized.includes("/node_modules/@nightrunners/nightmaxxing/") &&
+    !isEphemeralCommandPath(path)
   );
 }
 
@@ -4315,8 +4316,8 @@ function detectAutoUpdateManager({
     paths.some(
       (path) =>
         path.includes("/lib/node_modules/") ||
-        path.includes("/node_modules/@851-labs/tokenmaxxing/") ||
-        path.includes("/node_modules/.bin/tokenmaxxing"),
+        path.includes("/node_modules/@nightrunners/nightmaxxing/") ||
+        path.includes("/node_modules/.bin/nightmaxxing"),
     )
   ) {
     return "npm";
@@ -4470,10 +4471,10 @@ export {
   backendForPlatform,
   capturedServiceEnv,
   deferredServiceRepairInvocation,
-  durableTokenmaxxingCommandPath,
+  durableNightmaxxingCommandPath,
   detectAutoUpdateManager,
   findCommandOnPath,
-  findTokenmaxxingCommandInstall,
+  findNightmaxxingCommandInstall,
   formatServiceLockStatus,
   formatServiceStatusAutoUpdate,
   isEphemeralCommandPath,

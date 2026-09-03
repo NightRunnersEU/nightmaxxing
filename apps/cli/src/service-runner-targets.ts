@@ -2,8 +2,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { arch as hostArch, platform as hostPlatform } from "node:os";
 
-const SERVICE_RUNNER_PACKAGE_PREFIX = "@851-labs/tokenmaxxing-";
-const SERVICE_RUNNER_BIN_NAME = "tokenmaxxing";
+const SERVICE_RUNNER_PACKAGE_PREFIX = "@nightrunners/nightmaxxing-";
+const SERVICE_RUNNER_BIN_NAME = "nightmaxxing";
 
 const serviceRunnerTargetDefinitions = [
   { arch: "arm64", platform: "linux", target: "linux-arm64" },
@@ -41,7 +41,7 @@ interface ServiceRunnerHostOptions {
 
 interface ServiceRunnerPackageManifest {
   bin: {
-    tokenmaxxing: string;
+    nightmaxxing: string;
   };
   cpu: ServiceRunnerArch[];
   files: ["bin"];
@@ -100,7 +100,7 @@ function serviceRunnerPackageManifest(
 
   return {
     bin: {
-      tokenmaxxing: `bin/${binaryName}`,
+      nightmaxxing: `bin/${binaryName}`,
     },
     cpu: [definition.arch],
     files: ["bin"],

@@ -24,7 +24,7 @@ const ProfileIdentityResponse = Schema.Struct({
   login: Schema.String,
 });
 
-const OAuthProviderId = Schema.Literals(["github", "google"]);
+const OAuthProviderId = Schema.Literals(["github"]);
 
 type OAuthProviderId = typeof OAuthProviderId.Type;
 

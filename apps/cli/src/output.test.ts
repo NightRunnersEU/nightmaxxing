@@ -204,8 +204,8 @@ describe("humanFailure", () => {
     await Effect.runPromise(
       humanFailure(
         {
-          context: ["path: /usr/local/bin/tokenmaxxing"],
-          hint: "run tokenmaxxing login",
+          context: ["path: /usr/local/bin/nightmaxxing"],
+          hint: "run nightmaxxing login",
           message: "not logged in",
         },
         {},
@@ -215,8 +215,8 @@ describe("humanFailure", () => {
     expect(logs).toEqual([]);
     expect(promptCalls).toEqual([
       "error:Not logged in",
-      "info:Path: /usr/local/bin/tokenmaxxing",
-      "info:Hint: Run \x1b[36mtokenmaxxing login\x1b[0m",
+      "info:Path: /usr/local/bin/nightmaxxing",
+      "info:Hint: Run \x1b[36mnightmaxxing login\x1b[0m",
       "outro:Failed",
     ]);
   });
@@ -281,13 +281,13 @@ describe("humanConfirm", () => {
 describe("formatClackRow", () => {
   it("capitalizes the first display letter", () => {
     expect(formatClackRow("already logged in")).toBe("Already logged in");
-    expect(formatClackRow("hint: run tokenmaxxing login")).toBe("Hint: run tokenmaxxing login");
+    expect(formatClackRow("hint: run nightmaxxing login")).toBe("Hint: run nightmaxxing login");
   });
 
   it("preserves initial URLs, paths, packages, and command flags", () => {
-    expect(formatClackRow("https://tokenmaxxing.sh/alex")).toBe("https://tokenmaxxing.sh/alex");
-    expect(formatClackRow("/usr/local/bin/tokenmaxxing")).toBe("/usr/local/bin/tokenmaxxing");
-    expect(formatClackRow("@851-labs/tokenmaxxing")).toBe("@851-labs/tokenmaxxing");
+    expect(formatClackRow("https://maxxing.nrght.eu/alex")).toBe("https://maxxing.nrght.eu/alex");
+    expect(formatClackRow("/usr/local/bin/nightmaxxing")).toBe("/usr/local/bin/nightmaxxing");
+    expect(formatClackRow("@nightrunners/nightmaxxing")).toBe("@nightrunners/nightmaxxing");
     expect(formatClackRow("--json")).toBe("--json");
   });
 
@@ -297,37 +297,37 @@ describe("formatClackRow", () => {
 });
 
 describe("formatClackHintRow", () => {
-  it("highlights copyable tokenmaxxing commands in run hints", () => {
+  it("highlights copyable nightmaxxing commands in run hints", () => {
     expect(
-      formatClackHintRow("run tokenmaxxing logout first before logging in again", { env: {} }),
-    ).toBe("Hint: Run \x1b[36mtokenmaxxing logout\x1b[0m first before logging in again");
+      formatClackHintRow("run nightmaxxing logout first before logging in again", { env: {} }),
+    ).toBe("Hint: Run \x1b[36mnightmaxxing logout\x1b[0m first before logging in again");
   });
 
-  it("highlights multiple tokenmaxxing commands and preserves surrounding prose", () => {
+  it("highlights multiple nightmaxxing commands and preserves surrounding prose", () => {
     expect(
       formatClackHintRow(
-        "unset TOKENMAXXING_API_TOKEN, run tokenmaxxing login, then run tokenmaxxing service install",
+        "unset NIGHTMAXXING_API_TOKEN, run nightmaxxing login, then run nightmaxxing service install",
         { env: {} },
       ),
     ).toBe(
-      "Hint: Unset TOKENMAXXING_API_TOKEN, run \x1b[36mtokenmaxxing login\x1b[0m, then run \x1b[36mtokenmaxxing service install\x1b[0m",
+      "Hint: Unset NIGHTMAXXING_API_TOKEN, run \x1b[36mnightmaxxing login\x1b[0m, then run \x1b[36mnightmaxxing service install\x1b[0m",
     );
   });
 
-  it("includes values for tokenmaxxing flags that require values", () => {
+  it("includes values for nightmaxxing flags that require values", () => {
     expect(
-      formatClackHintRow("run tokenmaxxing bootstrap --service yes to skip this prompt", {
+      formatClackHintRow("run nightmaxxing bootstrap --service yes to skip this prompt", {
         env: {},
       }),
-    ).toBe("Hint: Run \x1b[36mtokenmaxxing bootstrap --service yes\x1b[0m to skip this prompt");
+    ).toBe("Hint: Run \x1b[36mnightmaxxing bootstrap --service yes\x1b[0m to skip this prompt");
   });
 
   it("does not highlight commands when NO_COLOR is set", () => {
     expect(
-      formatClackHintRow("run tokenmaxxing logout first before logging in again", {
+      formatClackHintRow("run nightmaxxing logout first before logging in again", {
         env: { NO_COLOR: "" },
       }),
-    ).toBe("Hint: Run tokenmaxxing logout first before logging in again");
+    ).toBe("Hint: Run nightmaxxing logout first before logging in again");
   });
 });
 
@@ -353,14 +353,14 @@ describe("formatStatusMessage", () => {
 
 describe("formatUrl", () => {
   it("highlights URLs", () => {
-    expect(formatUrl("https://tokenmaxxing.sh", { env: {} })).toBe(
-      "\x1b[36;4mhttps://tokenmaxxing.sh\x1b[0m",
+    expect(formatUrl("https://maxxing.nrght.eu", { env: {} })).toBe(
+      "\x1b[36;4mhttps://maxxing.nrght.eu\x1b[0m",
     );
   });
 
   it("respects NO_COLOR", () => {
-    expect(formatUrl("https://tokenmaxxing.sh", { env: { NO_COLOR: "" } })).toBe(
-      "https://tokenmaxxing.sh",
+    expect(formatUrl("https://maxxing.nrght.eu", { env: { NO_COLOR: "" } })).toBe(
+      "https://maxxing.nrght.eu",
     );
   });
 });

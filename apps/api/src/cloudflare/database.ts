@@ -5,7 +5,7 @@ import { Stack } from "alchemy/Stack";
 import { stageNameForResource } from "./stage";
 
 function databaseNameForStage(stage: string): string {
-  return `tokenmaxxing-${stageNameForResource(stage)}`;
+  return `nightmaxxing-${stageNameForResource(stage)}`;
 }
 
 const Database = Cloudflare.D1.Database(

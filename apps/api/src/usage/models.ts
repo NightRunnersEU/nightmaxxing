@@ -1,4 +1,4 @@
-import type { UsageDayInput } from "@tokenmaxxing/api-contract";
+import type { UsageDayInput } from "@nightmaxxing/api-contract";
 
 function normalizeCcusageModelName(source: string, model: string): string {
   const prefix = /^\[([^\]]+)\]/.exec(model);

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { LinkSimple } from "@phosphor-icons/react/ssr";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import type { ProfileDailyResponse, ProfileDailyRow } from "@tokenmaxxing/api-contract";
+import type { ProfileDailyResponse, ProfileDailyRow } from "@nightmaxxing/api-contract";
 
 type DailyRow = typeof ProfileDailyRow.Type;
 type DailyRange = (typeof ProfileDailyResponse.Type)["range"];
@@ -118,7 +118,7 @@ function ProfilePage() {
       {daily.days.length === 0 ? (
         <div className="px-4">
           <Card className="p-6 text-sm text-muted-foreground">
-            No usage yet — run <Code>tokenmaxxing sync</Code> to fill this page.
+            No usage yet — run <Code>nightmaxxing sync</Code> to fill this page.
           </Card>
         </div>
       ) : (
@@ -260,7 +260,18 @@ function ProfileDashboard({
       <section className="bg-background p-5">
         <h2 className="font-medium">Monthly Spend</h2>
         <div className="mt-4">
-          <MonthBars months={derived.months} />
+          <MonthBars months={derived.spendMonths} valueFormatter={formatUsd} valueLabel="Spend" />
+        </div>
+      </section>
+
+      <section className="bg-background p-5">
+        <h2 className="font-medium">Monthly Tokens</h2>
+        <div className="mt-4">
+          <MonthBars
+            months={derived.tokenMonths}
+            valueFormatter={formatTokens}
+            valueLabel="Tokens"
+          />
         </div>
       </section>
     </div>
@@ -278,7 +289,9 @@ function deriveCharts(rows: readonly DailyRow[], range: DailyRange) {
   const spendSeriesByDate = new Map<string, Map<string, number>>();
   const tokenSeriesByDate = new Map<string, Map<string, number>>();
   const spendByMonth = new Map<string, number>();
-  const seriesByMonth = new Map<string, Map<string, number>>();
+  const spendSeriesByMonth = new Map<string, Map<string, number>>();
+  const tokenByMonth = new Map<string, number>();
+  const tokenSeriesByMonth = new Map<string, Map<string, number>>();
   // Spend bucketed by weekday, Monday-first: [0]=Mon … [6]=Sun.
   const spendByWeekday = [0, 0, 0, 0, 0, 0, 0];
   let outputTokens = 0;
@@ -300,9 +313,13 @@ function deriveCharts(rows: readonly DailyRow[], range: DailyRange) {
 
     const month = row.date.slice(0, 7);
     spendByMonth.set(month, (spendByMonth.get(month) ?? 0) + row.costUsd);
-    const monthSeries = seriesByMonth.get(month) ?? new Map<string, number>();
-    monthSeries.set(spendModel, (monthSeries.get(spendModel) ?? 0) + row.costUsd);
-    seriesByMonth.set(month, monthSeries);
+    const spendMonthSeries = spendSeriesByMonth.get(month) ?? new Map<string, number>();
+    spendMonthSeries.set(spendModel, (spendMonthSeries.get(spendModel) ?? 0) + row.costUsd);
+    spendSeriesByMonth.set(month, spendMonthSeries);
+    tokenByMonth.set(month, (tokenByMonth.get(month) ?? 0) + row.totalTokens);
+    const tokenMonthSeries = tokenSeriesByMonth.get(month) ?? new Map<string, number>();
+    tokenMonthSeries.set(tokenModel, (tokenMonthSeries.get(tokenModel) ?? 0) + row.totalTokens);
+    tokenSeriesByMonth.set(month, tokenMonthSeries);
   }
 
   const allDays = enumerateDays(range.first, range.last);
@@ -338,27 +355,38 @@ function deriveCharts(rows: readonly DailyRow[], range: DailyRange) {
     tokenByDate,
   );
 
-  const months = enumerateCalendarMonths(range.first, range.last).map((month) => ({
+  const calendarMonths = enumerateCalendarMonths(range.first, range.last);
+  const spendMonths = calendarMonths.map((month) => ({
     month,
     segments: spendSelection.order.map((series) => ({
       color: colors.get(series) ?? "#9ca3af",
       series,
-      value: seriesByMonth.get(month)?.get(series) ?? 0,
+      value: spendSeriesByMonth.get(month)?.get(series) ?? 0,
     })),
     value: spendByMonth.get(month) ?? 0,
+  }));
+  const tokenMonths = calendarMonths.map((month) => ({
+    month,
+    segments: tokenSelection.order.map((series) => ({
+      color: colors.get(series) ?? "#9ca3af",
+      series,
+      value: tokenSeriesByMonth.get(month)?.get(series) ?? 0,
+    })),
+    value: tokenByMonth.get(month) ?? 0,
   }));
 
   return {
     heatmap: heatmapRange,
-    months,
     outputTokens,
     segmentsByDate,
     spendByDate,
     spendDays,
     spendLegend: buildLegend(spendDays, colors),
+    spendMonths,
     spendByWeekday,
     tokenDays,
     tokenLegend: buildLegend(tokenDays, colors),
+    tokenMonths,
   };
 }
 

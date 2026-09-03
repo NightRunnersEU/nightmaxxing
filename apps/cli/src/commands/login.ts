@@ -2,7 +2,7 @@ import { arch, hostname } from "node:os";
 
 import { Data, Effect } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
-import type { AuthUser } from "@tokenmaxxing/api-contract";
+import type { AuthUser } from "@nightmaxxing/api-contract";
 
 import packageJson from "../../package.json";
 import {
@@ -29,21 +29,21 @@ class StartCliLoginError extends Data.TaggedError("StartCliLoginError")<{
 class PollCliLoginError extends Data.TaggedError("PollCliLoginError")<{
   readonly cause: unknown;
 }> {
-  override message = "error: failed to poll CLI login\nhint: run tokenmaxxing login again";
+  override message = "error: failed to poll CLI login\nhint: run nightmaxxing login again";
 }
 
 class OpenBrowserError extends Data.TaggedError("OpenBrowserError")<{
   readonly cause: unknown;
 }> {
   override message =
-    "error: failed to open browser\nhint: run tokenmaxxing login without --json to approve manually, or set TOKENMAXXING_API_TOKEN";
+    "error: failed to open browser\nhint: run nightmaxxing login without --json to approve manually, or set NIGHTMAXXING_API_TOKEN";
 }
 
 class WriteCliTokenError extends Data.TaggedError("WriteCliTokenError")<{
   readonly cause: unknown;
 }> {
   override message =
-    "error: failed to write CLI token\nhint: check TOKENMAXXING_CONFIG_DIR permissions";
+    "error: failed to write CLI token\nhint: check NIGHTMAXXING_CONFIG_DIR permissions";
 }
 
 class LoginSleepError extends Data.TaggedError("LoginSleepError")<{
@@ -53,7 +53,7 @@ class LoginSleepError extends Data.TaggedError("LoginSleepError")<{
 }
 
 class LoginTimeoutError extends Data.TaggedError("LoginTimeoutError")<{}> {
-  override message = "error: timed out waiting for CLI login\nhint: run tokenmaxxing login again";
+  override message = "error: timed out waiting for CLI login\nhint: run nightmaxxing login again";
 }
 
 class AlreadyLoggedInError extends Data.TaggedError("AlreadyLoggedInError")<{
@@ -66,10 +66,10 @@ class AlreadyLoggedInError extends Data.TaggedError("AlreadyLoggedInError")<{
       this.login === undefined ? "already logged in" : `already logged in as ${this.login}`;
 
     if (this.envTokenActive) {
-      return `error: ${message}\nhint: run tokenmaxxing logout first, or unset TOKENMAXXING_API_TOKEN before logging in again`;
+      return `error: ${message}\nhint: run nightmaxxing logout first, or unset NIGHTMAXXING_API_TOKEN before logging in again`;
     }
 
-    return `error: ${message}\nhint: run tokenmaxxing logout first before logging in again`;
+    return `error: ${message}\nhint: run nightmaxxing logout first before logging in again`;
   }
 }
 
@@ -78,10 +78,10 @@ class LoginTokenInvalidError extends Data.TaggedError("LoginTokenInvalidError")<
 }> {
   override get message() {
     if (this.envTokenActive) {
-      return "error: login token is no longer valid\nhint: unset TOKENMAXXING_API_TOKEN or set a valid token";
+      return "error: login token is no longer valid\nhint: unset NIGHTMAXXING_API_TOKEN or set a valid token";
     }
 
-    return "error: stored login is no longer valid\nhint: run tokenmaxxing logout, then run tokenmaxxing login";
+    return "error: stored login is no longer valid\nhint: run nightmaxxing logout, then run nightmaxxing login";
   }
 }
 
@@ -94,7 +94,7 @@ class LoginValidationError extends Data.TaggedError("LoginValidationError")<{
 
 class NonInteractiveLoginError extends Data.TaggedError("NonInteractiveLoginError")<{}> {
   override message =
-    "error: cannot run browser login without an interactive terminal\nhint: set TOKENMAXXING_API_TOKEN for non-interactive environments";
+    "error: cannot run browser login without an interactive terminal\nhint: set NIGHTMAXXING_API_TOKEN for non-interactive environments";
 }
 
 const MAX_POLL_ATTEMPTS = 150;
@@ -114,7 +114,7 @@ const loginCommand = Command.make(
     json: Flag.boolean("json").pipe(Flag.withDescription("Output machine-readable JSON")),
   },
   ({ json }) => loginEffect({ json }),
-).pipe(Command.withDescription("Log in to tokenmaxxing via your browser"));
+).pipe(Command.withDescription("Log in to nightmaxxing via your browser"));
 
 function loginEffect(options: { json: boolean }) {
   return humanFrame(

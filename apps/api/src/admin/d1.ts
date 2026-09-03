@@ -1,9 +1,9 @@
-import { cliTokens, devices, usageDays, userAccounts, users } from "@tokenmaxxing/db";
+import { cliTokens, devices, usageDays, userAccounts, users } from "@nightmaxxing/db";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { Layer } from "effect";
 
-import type { OAuthProviderId } from "@tokenmaxxing/api-contract";
+import type { OAuthProviderId } from "@nightmaxxing/api-contract";
 
 import { Drizzle } from "../database";
 import { AdminRepository, type AdminUserSnapshot } from "./service";

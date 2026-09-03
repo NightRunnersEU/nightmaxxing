@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProfileResponse } from "@tokenmaxxing/api-contract";
+import type { ProfileResponse } from "@nightmaxxing/api-contract";
 
 import {
   profileOgDescription,

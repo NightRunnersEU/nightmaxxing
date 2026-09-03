@@ -1,4 +1,4 @@
-import { cliTokens, devices, usageDays, usageSourceStats, users } from "@tokenmaxxing/db";
+import { cliTokens, devices, usageDays, usageSourceStats, users } from "@nightmaxxing/db";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { Effect } from "effect";
 import { Layer } from "effect";

@@ -8,14 +8,14 @@ import { Avatar } from "./ui/avatar";
 import { buttonClassName } from "./ui/button";
 import { Menu } from "./ui/menu";
 
-const GITHUB_URL = "https://github.com/851-labs/tokenmaxxing";
+const GITHUB_URL = "https://github.com/NightRunnersEU/nightmaxxing";
 
 function Nav() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur">
       <div className="mx-4 grid h-14 max-w-5xl grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-x border-border px-4 lg:mx-auto">
         <Link className="min-w-0 truncate text-sm font-semibold" to="/">
-          tokenmaxxing.sh
+          maxxing.nrght.eu
         </Link>
         <nav
           className="hidden items-baseline gap-6 justify-self-center sm:flex"

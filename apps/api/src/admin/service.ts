@@ -17,14 +17,13 @@ import {
   type ServiceCheckInStatusValue,
   type ServiceRepairReasonValue,
   type ServiceRepairStatusValue,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 
 import type { DatabaseError } from "../database";
 
-const ADMIN_EMAILS = ["alexandru@851.sh", "pondorasti@gmail.com"] as const;
 const STALE_THRESHOLD_MS = 6 * 60 * 60 * 1000;
 const ROLLOUT_GRACE_MS = 2 * 60 * 60 * 1000;
-const NPM_PACKAGE_URL = "https://registry.npmjs.org/@851-labs%2Ftokenmaxxing";
+const NPM_PACKAGE_URL = "https://registry.npmjs.org/@nightrunners%2Fnightmaxxing";
 const LATEST_VERSION_CACHE_MS = 5 * 60 * 1000;
 const RELEASE_CHANNELS = ["latest", "alpha", "beta", "rc"] as const;
 
@@ -147,27 +146,29 @@ interface AdminRepositoryShape {
 }
 
 interface AdminServiceOptions {
+  adminEmails?: readonly string[] | undefined;
   fetchLatestCliRelease?: (() => Effect.Effect<LatestCliRelease>) | undefined;
   now?: (() => Date) | undefined;
 }
 
 class AdminService extends Context.Service<AdminService, AdminServiceShape>()(
-  "@tokenmaxxing/api/AdminService",
+  "@nightmaxxing/api/AdminService",
 ) {}
 
 class AdminRepository extends Context.Service<AdminRepository, AdminRepositoryShape>()(
-  "@tokenmaxxing/api/AdminRepository",
+  "@nightmaxxing/api/AdminRepository",
 ) {}
 
 function makeAdminService(options: AdminServiceOptions = {}) {
   return Effect.gen(function* () {
     const repository = yield* AdminRepository;
+    const adminEmails = options.adminEmails ?? [];
     const now = options.now ?? (() => new Date());
     const fetchLatestCliRelease = options.fetchLatestCliRelease ?? defaultFetchLatestCliRelease;
 
     return AdminService.of({
       listUsers: Effect.fn("AdminService.listUsers")(function* (userId) {
-        yield* requireInternalAdmin(repository, userId);
+        yield* requireInternalAdmin(repository, userId, adminEmails);
 
         const generatedAt = now();
         const [latestCliRelease, snapshots] = yield* Effect.all([
@@ -192,7 +193,7 @@ function makeAdminService(options: AdminServiceOptions = {}) {
         };
       }),
       shadowBanUser: Effect.fn("AdminService.shadowBanUser")(function* (adminUserId, targetUserId) {
-        yield* requireInternalAdmin(repository, adminUserId);
+        yield* requireInternalAdmin(repository, adminUserId, adminEmails);
 
         const at = now();
         const updated = yield* repository
@@ -216,7 +217,7 @@ function makeAdminService(options: AdminServiceOptions = {}) {
       }),
       shadowUnbanUser: Effect.fn("AdminService.shadowUnbanUser")(
         function* (adminUserId, targetUserId) {
-          yield* requireInternalAdmin(repository, adminUserId);
+          yield* requireInternalAdmin(repository, adminUserId, adminEmails);
 
           const updated = yield* repository
             .setShadowBan({
@@ -239,9 +240,10 @@ function makeAdminService(options: AdminServiceOptions = {}) {
 function requireInternalAdmin(
   repository: AdminRepositoryShape,
   userId: string,
+  adminEmails: readonly string[],
 ): Effect.Effect<void, Forbidden, any> {
   return Effect.gen(function* () {
-    const allowed = yield* isInternalAdmin(repository, userId);
+    const allowed = yield* isInternalAdmin(repository, userId, adminEmails);
     if (!allowed) {
       return yield* Effect.fail(new Forbidden({ message: "Not found." }));
     }
@@ -251,9 +253,10 @@ function requireInternalAdmin(
 function isInternalAdmin(
   repository: AdminRepositoryShape,
   userId: string,
+  adminEmails: readonly string[],
 ): Effect.Effect<boolean, never, any> {
   return Effect.gen(function* () {
-    for (const email of ADMIN_EMAILS) {
+    for (const email of adminEmails) {
       const allowed = yield* repository.hasVerifiedEmail(userId, email).pipe(Effect.orDie);
       if (allowed) {
         return true;

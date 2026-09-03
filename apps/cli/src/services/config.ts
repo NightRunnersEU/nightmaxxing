@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 import { Context, Data, Effect, Layer } from "effect";
 
 /**
- * Local CLI state at ~/.config/tokenmaxxing/config.json (override with
- * TOKENMAXXING_CONFIG_DIR; TOKENMAXXING_API_TOKEN wins over the stored
+ * Local CLI state at ~/.config/nightmaxxing/config.json (override with
+ * NIGHTMAXXING_CONFIG_DIR; NIGHTMAXXING_API_TOKEN wins over the stored
  * token for CI). `deviceId` is generated once at first login and survives
  * logout — it is the idempotency key for every usage row this machine has
  * ever pushed.
@@ -37,7 +37,7 @@ class ConfigReadError extends Data.TaggedError("ConfigReadError")<{
   readonly path: string;
 }> {
   override get message() {
-    return `error: failed to read CLI config: ${this.path}\nhint: check TOKENMAXXING_CONFIG_DIR`;
+    return `error: failed to read CLI config: ${this.path}\nhint: check NIGHTMAXXING_CONFIG_DIR`;
   }
 }
 
@@ -46,34 +46,34 @@ class ConfigWriteError extends Data.TaggedError("ConfigWriteError")<{
   readonly path: string;
 }> {
   override get message() {
-    return `error: failed to write CLI config: ${this.path}\nhint: check TOKENMAXXING_CONFIG_DIR permissions`;
+    return `error: failed to write CLI config: ${this.path}\nhint: check NIGHTMAXXING_CONFIG_DIR permissions`;
   }
 }
 
 type ConfigError = ConfigReadError | ConfigWriteError;
 
-type TokenmaxxingEnvironment = "development" | "production";
+type NightmaxxingEnvironment = "development" | "production";
 
-const runtimeConfigTable: Record<TokenmaxxingEnvironment, { apiUrl: string; wwwUrl: string }> = {
+const runtimeConfigTable: Record<NightmaxxingEnvironment, { apiUrl: string; wwwUrl: string }> = {
   development: {
-    apiUrl: "http://api.tokenmaxxing.localhost:8788",
-    wwwUrl: "http://tokenmaxxing.localhost:3002",
+    apiUrl: "http://api.nightmaxxing.localhost:8788",
+    wwwUrl: "http://nightmaxxing.localhost:3002",
   },
   production: {
-    apiUrl: "https://api.tokenmaxxing.sh",
-    wwwUrl: "https://tokenmaxxing.sh",
+    apiUrl: "https://api.maxxing.nrght.eu",
+    wwwUrl: "https://maxxing.nrght.eu",
   },
 };
 
-const legacyProductionUrls = {
-  apiUrl: new Set(["https://api.tokenmaxxing.851.sh"]),
-  wwwUrl: new Set(["https://tokenmaxxing.851.sh"]),
+const upstreamProductionUrls = {
+  apiUrl: new Set(["https://api.tokenmaxxing.851.sh", "https://api.tokenmaxxing.sh"]),
+  wwwUrl: new Set(["https://tokenmaxxing.851.sh", "https://tokenmaxxing.sh"]),
 };
 
 function getEnvironment(
   env: Record<string, string | undefined> = process.env,
-): TokenmaxxingEnvironment {
-  return env["TOKENMAXXING_ENV"] === "development" ? "development" : "production";
+): NightmaxxingEnvironment {
+  return env["NIGHTMAXXING_ENV"] === "development" ? "development" : "production";
 }
 
 const localDevelopmentConfigDir = join(
@@ -83,14 +83,14 @@ const localDevelopmentConfigDir = join(
   "..",
   "..",
   ".tmp",
-  "tokenmaxxing-cli",
+  "nightmaxxing-cli",
 );
 
 function getConfigPath(env: Record<string, string | undefined> = process.env): string {
   const configDir =
     getEnvironment(env) === "development"
       ? localDevelopmentConfigDir
-      : (env["TOKENMAXXING_CONFIG_DIR"] ?? join(homedir(), ".config", "tokenmaxxing"));
+      : (env["NIGHTMAXXING_CONFIG_DIR"] ?? join(homedir(), ".config", "nightmaxxing"));
 
   return join(configDir, "config.json");
 }
@@ -111,12 +111,12 @@ function applyEnvOverrides(config: CliConfig, env: Record<string, string | undef
   return {
     ...config,
     apiUrl:
-      env["TOKENMAXXING_API_URL"] ??
+      env["NIGHTMAXXING_API_URL"] ??
       (environment === "development" ? runtimeConfig.apiUrl : config.apiUrl),
     wwwUrl:
-      env["TOKENMAXXING_WWW_URL"] ??
+      env["NIGHTMAXXING_WWW_URL"] ??
       (environment === "development" ? runtimeConfig.wwwUrl : config.wwwUrl),
-    token: env["TOKENMAXXING_API_TOKEN"] ?? config.token,
+    token: env["NIGHTMAXXING_API_TOKEN"] ?? config.token,
   };
 }
 
@@ -129,7 +129,7 @@ function normalizeConfig(config: Partial<CliConfig>, fallback: CliConfig): CliCo
 }
 
 function normalizeStoredUrl(key: "apiUrl" | "wwwUrl", value: string): string {
-  return legacyProductionUrls[key].has(value) ? runtimeConfigTable.production[key] : value;
+  return upstreamProductionUrls[key].has(value) ? runtimeConfigTable.production[key] : value;
 }
 
 function readConfigFileProgram(
@@ -249,7 +249,7 @@ function clearTokenProgram(
 function hasEnvTokenProgram(
   env: Record<string, string | undefined> = process.env,
 ): Effect.Effect<boolean> {
-  return Effect.succeed(Boolean(env["TOKENMAXXING_API_TOKEN"]));
+  return Effect.succeed(Boolean(env["NIGHTMAXXING_API_TOKEN"]));
 }
 
 class ConfigService extends Context.Service<

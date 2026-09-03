@@ -1,4 +1,4 @@
-import type { UsageDayInput } from "@tokenmaxxing/api-contract";
+import type { UsageDayInput } from "@nightmaxxing/api-contract";
 
 import type { CcusageDay } from "./schema";
 

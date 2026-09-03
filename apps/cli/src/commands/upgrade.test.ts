@@ -12,8 +12,8 @@ import {
 
 const install: CommandInstall = {
   autoUpdateManager: "npm",
-  commandPath: "/usr/local/bin/tokenmaxxing",
-  resolvedCommandPath: "/usr/local/lib/node_modules/@851-labs/tokenmaxxing/dist/index.js",
+  commandPath: "/usr/local/bin/nightmaxxing",
+  resolvedCommandPath: "/usr/local/lib/node_modules/@nightrunners/nightmaxxing/dist/index.js",
 };
 
 function testConsole() {
@@ -55,7 +55,7 @@ describe("upgradeProgram", () => {
       "Using method: npm",
       "Checking latest version",
       "From 0.4.3 -> 0.4.4",
-      "Running npm install -g @851-labs/tokenmaxxing@latest --silent",
+      "Running npm install -g @nightrunners/nightmaxxing@latest --silent",
       "Upgraded to v0.4.4",
       "Refreshing service",
       "Service: not installed",
@@ -119,8 +119,8 @@ describe("upgradeProgram", () => {
       "Using method: npm",
       "Checking latest version",
       "Could not check latest version; running upgrade anyway",
-      "Running npm install -g @851-labs/tokenmaxxing@latest --silent",
-      "Upgraded tokenmaxxing",
+      "Running npm install -g @nightrunners/nightmaxxing@latest --silent",
+      "Upgraded nightmaxxing",
       "Refreshing service",
       "Service: not installed",
     ]);
@@ -149,7 +149,7 @@ describe("upgradeProgram", () => {
     expect(managers).toEqual([]);
     expect(logs).toEqual([
       JSON.stringify({
-        command: "npm install -g @851-labs/tokenmaxxing@latest --silent",
+        command: "npm install -g @nightrunners/nightmaxxing@latest --silent",
         currentVersion: "0.4.3",
         latestVersion: "0.4.3",
         packageManager: "npm",
@@ -186,7 +186,7 @@ describe("upgradeProgram", () => {
     expect(managers).toEqual(["npm"]);
     expect(logs).toEqual([
       JSON.stringify({
-        command: "npm install -g @851-labs/tokenmaxxing@latest --silent",
+        command: "npm install -g @nightrunners/nightmaxxing@latest --silent",
         currentVersion: "0.4.3",
         latestVersion: "0.4.4",
         packageManager: "npm",
@@ -218,7 +218,7 @@ describe("upgradeProgram", () => {
     );
 
     expect(exit._tag).toBe("Success");
-    expect(refreshes).toEqual([{ commandPath: "/usr/local/bin/tokenmaxxing" }]);
+    expect(refreshes).toEqual([{ commandPath: "/usr/local/bin/nightmaxxing" }]);
     expect(logs).toContain("Upgraded to v0.4.4");
     expect(logs).toContain("Service: refreshed");
   });
@@ -238,7 +238,7 @@ describe("upgradeProgram", () => {
     );
 
     expect(exit._tag).toBe("Success");
-    expect(logs).toContain("Service: refresh failed; run tokenmaxxing service install if needed");
+    expect(logs).toContain("Service: refresh failed; run nightmaxxing service install if needed");
   });
 
   it("rejects ephemeral package-runner installs", async () => {
@@ -248,7 +248,7 @@ describe("upgradeProgram", () => {
         findCommandInstall: () =>
           Effect.succeed({
             ...install,
-            commandPath: "/home/alex/.npm/_npx/123/node_modules/.bin/tokenmaxxing",
+            commandPath: "/home/alex/.npm/_npx/123/node_modules/.bin/nightmaxxing",
           }),
       }).pipe(Effect.provide(layer)),
     );
@@ -281,7 +281,7 @@ describe("refreshInstalledService", () => {
     expect(formatServiceRefreshResult({ _tag: "refreshed" })).toBe("Service: refreshed");
     expect(formatServiceRefreshResult({ _tag: "not-installed" })).toBe("Service: not installed");
     expect(formatServiceRefreshResult({ _tag: "failed", cause: "boom" })).toBe(
-      "Service: refresh failed; run tokenmaxxing service install if needed",
+      "Service: refresh failed; run nightmaxxing service install if needed",
     );
   });
 });
@@ -305,7 +305,7 @@ describe("formatUpgradeSuccess", () => {
         currentVersion: "0.4.3",
         latestVersion: null,
       }),
-    ).toBe("Upgraded tokenmaxxing");
+    ).toBe("Upgraded nightmaxxing");
   });
 });
 

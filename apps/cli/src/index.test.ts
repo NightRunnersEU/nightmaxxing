@@ -8,11 +8,11 @@ describe("defaultCliArgv", () => {
   });
 
   it("uses Bun standalone argv when argv[1] is already a CLI flag", () => {
-    expect(defaultCliArgv(["tokenmaxxing.exe", "--version"])).toEqual(["--version"]);
+    expect(defaultCliArgv(["nightmaxxing.exe", "--version"])).toEqual(["--version"]);
   });
 
   it("uses Bun standalone argv when argv[1] is already a subcommand", () => {
-    expect(defaultCliArgv(["tokenmaxxing.exe", "bootstrap", "--service", "yes"])).toEqual([
+    expect(defaultCliArgv(["nightmaxxing.exe", "bootstrap", "--service", "yes"])).toEqual([
       "bootstrap",
       "--service",
       "yes",

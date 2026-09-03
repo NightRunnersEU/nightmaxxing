@@ -9,7 +9,7 @@ import {
   users,
   type User,
   type UserAccount,
-} from "@tokenmaxxing/db";
+} from "@nightmaxxing/db";
 import { and, eq, gt } from "drizzle-orm";
 import { Effect } from "effect";
 import { Layer } from "effect";

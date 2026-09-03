@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { UsageDayInput } from "@tokenmaxxing/api-contract";
+import type { UsageDayInput } from "@nightmaxxing/api-contract";
 
 import { normalizeCcusageModelName, normalizeUsageDays } from "./models";
 

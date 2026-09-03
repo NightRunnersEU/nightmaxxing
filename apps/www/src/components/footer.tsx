@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-const GITHUB_REPO = "851-labs/tokenmaxxing";
+const GITHUB_REPO = "NightRunnersEU/nightmaxxing";
 const GITHUB_URL = `https://github.com/${GITHUB_REPO}`;
 
 const LINKS = {

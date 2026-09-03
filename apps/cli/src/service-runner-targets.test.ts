@@ -122,7 +122,7 @@ describe("native package metadata", () => {
       expect(manifest.preferUnplugged).toBe(true);
       expect(manifest.publishConfig).toEqual({ access: "public" });
       expect(manifest.files).toEqual(["bin"]);
-      expect(manifest.bin["tokenmaxxing"]).toBe(
+      expect(manifest.bin["nightmaxxing"]).toBe(
         `bin/${serviceRunnerBinaryName(platformForServiceRunnerTarget(definition.target))}`,
       );
       if ("libc" in definition && definition.libc === "musl") {
@@ -139,9 +139,9 @@ describe("native package metadata", () => {
       serviceRunnerTargets.map((target) => serviceRunnerPackageName(target)),
     );
     expect(Object.values(optionalDependencies)).toEqual(serviceRunnerTargets.map(() => "1.2.3"));
-    expect(serviceRunnerPublishOrder("@851-labs/tokenmaxxing")).toEqual([
+    expect(serviceRunnerPublishOrder("@nightrunners/nightmaxxing")).toEqual([
       ...Object.keys(optionalDependencies),
-      "@851-labs/tokenmaxxing",
+      "@nightrunners/nightmaxxing",
     ]);
   });
 

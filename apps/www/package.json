@@ -1,5 +1,5 @@
 {
-  "name": "@tokenmaxxing/www",
+  "name": "@nightmaxxing/www",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,12 +11,12 @@
     "@base-ui-components/react": "catalog:",
     "@fontsource/geist-mono": "catalog:",
     "@fontsource/geist-sans": "catalog:",
+    "@nightmaxxing/api-contract": "workspace:*",
     "@phosphor-icons/react": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/react-router-ssr-query": "catalog:",
     "@tanstack/react-start": "catalog:",
-    "@tokenmaxxing/api-contract": "workspace:*",
     "clsx": "^2.1.1",
     "effect": "catalog:",
     "react": "catalog:",

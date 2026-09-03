@@ -21,7 +21,6 @@ import {
 } from "../../auth/service";
 import { AppConfig, type AppConfigShape } from "../../config";
 import { buildAuthorizeUrl, GitHubClient } from "../../github/client";
-import { buildGoogleAuthorizeUrl, GoogleClient } from "../../google/client";
 
 /**
  * Routes that cannot live in the HttpApi contract: the OAuth browser flow
@@ -31,9 +30,7 @@ import { buildGoogleAuthorizeUrl, GoogleClient } from "../../google/client";
  */
 
 const githubOAuthStartRoute = oauthStartRoute("github");
-const googleOAuthStartRoute = oauthStartRoute("google");
 const githubOAuthCallbackRoute = oauthCallbackRoute("github");
-const googleOAuthCallbackRoute = oauthCallbackRoute("google");
 
 function oauthStartRoute(provider: OAuthProviderId) {
   return HttpRouter.add(
@@ -112,7 +109,7 @@ function oauthCallbackRoute(provider: OAuthProviderId) {
             {
               error: {
                 code: "oauth_account_conflict",
-                message: `That ${providerLabel(provider)} account is already connected to another tokenmaxxing profile.`,
+                message: `That ${providerLabel(provider)} account is already connected to another nightmaxxing profile.`,
               },
             },
             { status: 409 },
@@ -162,8 +159,6 @@ const signoutRoute = HttpRouter.add(
 const oauthRoutesLayer = Layer.mergeAll(
   githubOAuthStartRoute,
   githubOAuthCallbackRoute,
-  googleOAuthStartRoute,
-  googleOAuthCallbackRoute,
   signoutRoute,
 );
 
@@ -173,33 +168,19 @@ function buildProviderAuthorizeUrl(
   redirectUri: string,
   state: string,
 ): string {
-  switch (provider) {
-    case "github":
-      return buildAuthorizeUrl(config.github, redirectUri, state);
-    case "google":
-      return buildGoogleAuthorizeUrl(config.google, redirectUri, state);
-  }
+  return buildAuthorizeUrl(config.github, redirectUri, state);
 }
 
 function fetchProviderProfile(
   provider: OAuthProviderId,
   code: string,
   redirectUri: string,
-): Effect.Effect<OAuthProfile, unknown, GitHubClient | GoogleClient> {
-  switch (provider) {
-    case "github":
-      return Effect.gen(function* () {
-        const github = yield* GitHubClient;
-        const accessToken = yield* github.exchangeCode(code, redirectUri);
-        return yield* github.fetchUser(accessToken);
-      });
-    case "google":
-      return Effect.gen(function* () {
-        const google = yield* GoogleClient;
-        const accessToken = yield* google.exchangeCode(code, redirectUri);
-        return yield* google.fetchUser(accessToken);
-      });
-  }
+): Effect.Effect<OAuthProfile, unknown, GitHubClient> {
+  return Effect.gen(function* () {
+    const github = yield* GitHubClient;
+    const accessToken = yield* github.exchangeCode(code, redirectUri);
+    return yield* github.fetchUser(accessToken);
+  });
 }
 
 function currentUserFromRequest(
@@ -218,12 +199,7 @@ function currentUserFromRequest(
 }
 
 function providerLabel(provider: OAuthProviderId): string {
-  switch (provider) {
-    case "github":
-      return "GitHub";
-    case "google":
-      return "Google";
-  }
+  return provider === "github" ? "GitHub" : provider;
 }
 
 function sanitizeOAuthRedirectPath(value: string | null): string | null {
@@ -237,8 +213,8 @@ function sanitizeOAuthRedirectPath(value: string | null): string | null {
   }
 
   try {
-    const url = new URL(trimmed, "https://tokenmaxxing.invalid");
-    if (url.origin !== "https://tokenmaxxing.invalid") {
+    const url = new URL(trimmed, "https://nightmaxxing.invalid");
+    if (url.origin !== "https://nightmaxxing.invalid") {
       return null;
     }
 

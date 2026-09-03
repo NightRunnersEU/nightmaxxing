@@ -6,7 +6,7 @@ import {
   type CliConfig,
   ConfigService,
   ConsoleService,
-  type TokenmaxxingApiClient,
+  type NightmaxxingApiClient,
 } from "../services";
 import { logoutEffect } from "./logout";
 
@@ -25,9 +25,9 @@ interface TestState {
 
 function makeTestLayer(options: TestLayerOptions = {}) {
   let currentConfig: CliConfig = {
-    apiUrl: "https://api.tokenmaxxing.example",
+    apiUrl: "https://api.nightmaxxing.example",
     ...(options.token === undefined ? {} : { token: options.token }),
-    wwwUrl: "https://tokenmaxxing.example",
+    wwwUrl: "https://nightmaxxing.example",
   };
   const state: TestState = {
     clearCalls: 0,
@@ -52,7 +52,7 @@ function makeTestLayer(options: TestLayerOptions = {}) {
                 }
               }),
           },
-        } as unknown as TokenmaxxingApiClient);
+        } as unknown as NightmaxxingApiClient);
       },
     }),
     Layer.succeed(ConfigService)({
@@ -99,7 +99,7 @@ describe("logoutEffect", () => {
 
     expect(state.clearCalls).toBe(1);
     expect(state.madeClients).toEqual([
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_test" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_test" },
     ]);
     expect(state.logoutCalls).toBe(1);
     expect(state.logs).toEqual(["Logging out", "Logged out"]);
@@ -128,7 +128,7 @@ describe("logoutEffect", () => {
 
     expect(state.clearCalls).toBe(1);
     expect(state.madeClients).toEqual([
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_test" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_test" },
     ]);
     expect(state.logoutCalls).toBe(1);
     expect(state.logs).toEqual(["Logging out", "Logged out"]);
@@ -142,7 +142,7 @@ describe("logoutEffect", () => {
 
     expect(state.clearCalls).toBe(1);
     expect(state.madeClients).toEqual([
-      { baseUrl: "https://api.tokenmaxxing.example", token: "tmx_test" },
+      { baseUrl: "https://api.nightmaxxing.example", token: "tmx_test" },
     ]);
     expect(state.logoutCalls).toBe(1);
     expect(state.logs).toEqual(['{"status":"ok","tokenCleared":true}']);

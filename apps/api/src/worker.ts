@@ -15,7 +15,6 @@ import { CliLoginService, makeCliLoginService } from "./clilogin/service";
 import { AppConfig } from "./config";
 import { Drizzle } from "./database";
 import { GitHubClient, makeGitHubClient } from "./github/client";
-import { GoogleClient, makeGoogleClient } from "./google/client";
 import { LeaderboardRepositoryLive } from "./leaderboard/d1";
 import { LeaderboardService, makeLeaderboardService } from "./leaderboard/service";
 import { makeProfilesService, ProfilesService } from "./profiles/service";
@@ -34,14 +33,14 @@ import { UsageRepositoryLive } from "./usage/d1";
 const ApiWorker = Cloudflare.Worker(
   "api",
   {
-    name: "tokenmaxxing-api",
+    name: "nightmaxxing-api",
     main: import.meta.filename,
     url: false,
     compatibility: {
       date: "2026-06-02",
       flags: ["nodejs_compat"],
     },
-    domain: "api.tokenmaxxing.sh",
+    domain: "api.maxxing.nrght.eu",
     observability: {
       enabled: true,
     },
@@ -77,12 +76,8 @@ const ApiWorker = Cloudflare.Worker(
       Effect.provide(FetchHttpClient.layer),
       Effect.provideService(AppConfig, config),
     );
-    const google = yield* makeGoogleClient().pipe(
-      Effect.provide(FetchHttpClient.layer),
-      Effect.provideService(AppConfig, config),
-    );
     const usage = yield* makeUsageService().pipe(Effect.provide(usageRepositoryLayer));
-    const admin = yield* makeAdminService().pipe(
+    const admin = yield* makeAdminService({ adminEmails: config.adminEmails }).pipe(
       Effect.provide(AdminRepositoryLive.pipe(Layer.provide(drizzleLayer))),
     );
     const leaderboard = yield* makeLeaderboardService().pipe(
@@ -104,7 +99,6 @@ const ApiWorker = Cloudflare.Worker(
       Context.add(AuthService, auth),
       Context.add(CliLoginService, cliLogin),
       Context.add(GitHubClient, github),
-      Context.add(GoogleClient, google),
       Context.add(LeaderboardService, leaderboard),
       Context.add(ProfilesService, profiles),
       Context.add(StatsService, stats),

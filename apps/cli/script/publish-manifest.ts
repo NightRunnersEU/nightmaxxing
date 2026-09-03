@@ -10,7 +10,7 @@ function createMainPackageJson() {
     license: packageJson.license,
     repository: packageJson.repository,
     bin: {
-      tokenmaxxing: "./bin/tokenmaxxing.exe",
+      nightmaxxing: "./bin/nightmaxxing.exe",
     },
     // npm links Windows shims after preinstall and before postinstall. Keep
     // native installation here so shims see the final .exe instead of Node JS.

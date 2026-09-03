@@ -1,4 +1,4 @@
-import type { ProfileDailyResponse, ProfileResponse } from "@tokenmaxxing/api-contract";
+import type { ProfileDailyResponse, ProfileResponse } from "@nightmaxxing/api-contract";
 
 import { resolveApiUrl } from "./config";
 

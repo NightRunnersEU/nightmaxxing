@@ -11,7 +11,7 @@ import { AuthUser, CliIdentity } from "./schemas";
  */
 
 class CurrentUser extends Context.Service<CurrentUser, typeof AuthUser.Type>()(
-  "@tokenmaxxing/api/CurrentUser",
+  "@nightmaxxing/api/CurrentUser",
 ) {}
 
 /**
@@ -21,19 +21,19 @@ class CurrentUser extends Context.Service<CurrentUser, typeof AuthUser.Type>()(
  * its domain failures with the last scheme's decode error.
  */
 class Authorization extends HttpApiMiddleware.Service<Authorization, { provides: CurrentUser }>()(
-  "@tokenmaxxing/api/Authorization",
+  "@nightmaxxing/api/Authorization",
   {
     error: Unauthorized,
   },
 ) {}
 
 class CurrentCliIdentity extends Context.Service<CurrentCliIdentity, typeof CliIdentity.Type>()(
-  "@tokenmaxxing/api/CurrentCliIdentity",
+  "@nightmaxxing/api/CurrentCliIdentity",
 ) {}
 
 /** CLI authentication: a `Bearer tmx_…` token resolved against cli_tokens. */
 class CliAuth extends HttpApiMiddleware.Service<CliAuth, { provides: CurrentCliIdentity }>()(
-  "@tokenmaxxing/api/CliAuth",
+  "@nightmaxxing/api/CliAuth",
   {
     error: Unauthorized,
   },

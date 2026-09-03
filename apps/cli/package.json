@@ -1,7 +1,7 @@
 {
-  "name": "@851-labs/tokenmaxxing",
-  "version": "0.6.0",
-  "description": "CLI for tokenmaxxing — sync your LLM token usage to the leaderboard.",
+  "name": "@nightrunners/nightmaxxing",
+  "version": "0.1.0",
+  "description": "CLI for Nightmaxxing — sync your LLM token usage to the leaderboard.",
   "keywords": [
     "ccusage",
     "claude-code",
@@ -13,11 +13,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/851-labs/tokenmaxxing.git",
+    "url": "git+https://github.com/NightRunnersEU/nightmaxxing.git",
     "directory": "apps/cli"
   },
   "bin": {
-    "tokenmaxxing": "dist/index.js"
+    "nightmaxxing": "dist/index.js"
   },
   "files": [
     "dist"
@@ -29,7 +29,7 @@
   },
   "scripts": {
     "prepack": "bun run build",
-    "cli": "TOKENMAXXING_ENV=development bun src/index.ts",
+    "cli": "NIGHTMAXXING_ENV=development bun src/index.ts",
     "build": "bun run typecheck && bun build src/index.ts --target node --outfile dist/index.js && chmod +x dist/index.js",
     "build:native-packages": "bun script/build-service-runners.ts",
     "build:service-runners": "bun script/build-service-runners.ts",
@@ -40,7 +40,7 @@
   "devDependencies": {
     "@clack/prompts": "catalog:",
     "@effect/platform-node": "catalog:",
-    "@tokenmaxxing/api-contract": "workspace:*",
+    "@nightmaxxing/api-contract": "workspace:*",
     "@types/bun": "catalog:",
     "effect": "catalog:",
     "typescript": "catalog:",

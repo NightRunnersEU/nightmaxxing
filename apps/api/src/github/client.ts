@@ -21,14 +21,14 @@ interface GitHubClientShape {
 }
 
 class GitHubClient extends Context.Service<GitHubClient, GitHubClientShape>()(
-  "@tokenmaxxing/api/GitHubClient",
+  "@nightmaxxing/api/GitHubClient",
 ) {}
 
 const githubHeaders = (token: string) => ({
   accept: "application/vnd.github+json",
   authorization: `Bearer ${token}`,
   // GitHub rejects requests without a User-Agent.
-  "user-agent": "tokenmaxxing",
+  "user-agent": "nightmaxxing",
 });
 
 const makeGitHubClient = Effect.fn("makeGitHubClient")(function* () {

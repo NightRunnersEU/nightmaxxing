@@ -26,10 +26,9 @@ jobs:
         run: bunx alchemy deploy --stage prod --yes
         env:
           ALCHEMY_STATE: cloudflare
-          CLOUDFLARE_ACCOUNT_ID: 630f294bcb2c1e9b751d9fe0655a453a
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           # GitHub blocks GITHUB_-prefixed secret names; map them here.
           GITHUB_CLIENT_ID: ${{ secrets.TMX_GITHUB_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.TMX_GITHUB_CLIENT_SECRET }}
-          GOOGLE_CLIENT_ID: ${{ secrets.TMX_GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.TMX_GOOGLE_CLIENT_SECRET }}
+          ADMIN_EMAILS: ${{ secrets.TMX_ADMIN_EMAILS }}

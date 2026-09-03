@@ -13,7 +13,7 @@ interface CurrentUser {
   name: string | null;
 }
 
-type OAuthProviderId = "github" | "google";
+type OAuthProviderId = "github";
 
 interface OAuthProfile {
   avatarUrl: string | null;
@@ -87,11 +87,11 @@ interface AuthRepositoryShape {
 }
 
 class AuthService extends Context.Service<AuthService, AuthServiceShape>()(
-  "@tokenmaxxing/api/AuthService",
+  "@nightmaxxing/api/AuthService",
 ) {}
 
 class AuthRepository extends Context.Service<AuthRepository, AuthRepositoryShape>()(
-  "@tokenmaxxing/api/AuthRepository",
+  "@nightmaxxing/api/AuthRepository",
 ) {}
 
 const makeAuthService = Effect.fn("makeAuthService")(function* () {

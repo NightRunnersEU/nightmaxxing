@@ -228,7 +228,7 @@ class AdminGroup extends HttpApiGroup.make("admin")
   )
   .middleware(Authorization) {}
 
-class TokenmaxxingApi extends HttpApi.make("tokenmaxxing")
+class NightmaxxingApi extends HttpApi.make("nightmaxxing")
   .add(HealthGroup)
   .add(MeGroup)
   .add(CliLoginGroup)
@@ -246,6 +246,6 @@ export {
   MeGroup,
   ProfilesGroup,
   StatsGroup,
-  TokenmaxxingApi,
+  NightmaxxingApi,
   UsageGroup,
 };

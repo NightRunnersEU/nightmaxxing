@@ -7,7 +7,7 @@ import type {
   RawUsageReportInput,
   SourceUsageStatsInput,
   UsageDayInput,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 
 import packageJson from "../../package.json";
 import { aggregateDays, summarize, type SourceSummary } from "../ccusage/aggregate";
@@ -28,7 +28,7 @@ import {
   ConfigService,
   ConsoleService,
   TerminalService,
-  type TokenmaxxingApiClient,
+  type NightmaxxingApiClient,
 } from "../services";
 import {
   formatUrl,
@@ -46,14 +46,14 @@ class SyncPushError extends Data.TaggedError("SyncPushError")<{
   readonly cause: unknown;
 }> {
   override message =
-    "error: failed to push usage to tokenmaxxing\nhint: check your network and run tokenmaxxing sync again";
+    "error: failed to push usage to nightmaxxing\nhint: check your network and run nightmaxxing sync again";
 }
 
 class SyncAuthValidationError extends Data.TaggedError("SyncAuthValidationError")<{
   readonly cause: unknown;
 }> {
   override message =
-    "error: failed to validate stored login\nhint: check your network and run tokenmaxxing login again";
+    "error: failed to validate stored login\nhint: check your network and run nightmaxxing login again";
 }
 
 class UnknownSourceError extends Data.TaggedError("UnknownSourceError")<{
@@ -138,7 +138,7 @@ type AuthenticatedCliConfig = CliConfig & { token: string };
 
 interface SyncAuth {
   authSource: "login" | "stored";
-  client: TokenmaxxingApiClient;
+  client: NightmaxxingApiClient;
   config: AuthenticatedCliConfig;
   user: AuthUser;
 }

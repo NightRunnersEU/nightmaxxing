@@ -6,14 +6,14 @@ import { humanFrame, humanSpinner, writeJson } from "../output";
 import { isUnauthorizedError } from "../auth-validation";
 
 class NotLoggedInError extends Data.TaggedError("NotLoggedInError")<{}> {
-  override message = "error: not logged in\nhint: run tokenmaxxing login";
+  override message = "error: not logged in\nhint: run nightmaxxing login";
 }
 
 class WhoamiError extends Data.TaggedError("WhoamiError")<{
   readonly cause: unknown;
 }> {
   override message =
-    "error: failed to fetch the signed-in user\nhint: run tokenmaxxing login again";
+    "error: failed to fetch the signed-in user\nhint: run nightmaxxing login again";
 }
 
 const whoamiCommand = Command.make(

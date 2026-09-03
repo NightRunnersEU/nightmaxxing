@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to tokenmaxxing are documented here. Versions are anchored to the
+All notable changes to nightmaxxing are documented here. Versions are anchored to the
 `cli-v*` release tags because the CLI is the project's current released artifact.
 
 ## Unreleased
@@ -72,7 +72,7 @@ All notable changes to tokenmaxxing are documented here. Versions are anchored t
 ### Changed
 
 - Made generated npm installs run native postinstall through Bun when available, with Node as a fallback.
-- Updated Bun install guidance to use `bun add -g --trust @851-labs/tokenmaxxing`.
+- Updated Bun install guidance to use `bun add -g --trust @nightrunners/nightmaxxing`.
 
 ### Fixed
 
@@ -112,8 +112,8 @@ All notable changes to tokenmaxxing are documented here. Versions are anchored t
 
 ### Changed
 
-- Changed npm installs to materialize a native `tokenmaxxing` binary from generated `@851-labs/tokenmaxxing-<target>` packages.
-- Renamed generated native packages away from the alpha-only `@851-labs/tokenmaxxing-service-<target>` package family.
+- Changed npm installs to materialize a native `nightmaxxing` binary from generated `@nightrunners/nightmaxxing-<target>` packages.
+- Renamed generated native packages away from the alpha-only `@nightrunners/nightmaxxing-service-<target>` package family.
 
 ## 0.4.18-alpha.3 - 2026-06-22
 
@@ -195,7 +195,7 @@ All notable changes to tokenmaxxing are documented here. Versions are anchored t
 
 ### Added
 
-- Added `tokenmaxxing service repair` to refresh service files and re-register native schedulers.
+- Added `nightmaxxing service repair` to refresh service files and re-register native schedulers.
 - Added automatic sync service check-ins for scheduler health and repair-needed fleet status.
 - Added a homepage bootstrap hero with a copyable install-and-bootstrap command.
 - Added `/terms` and `/privacy` pages.

@@ -7,13 +7,12 @@ import {
   CHART_WIDTH,
   formatMonth,
   formatMonthLong,
-  formatUsd,
   linearScale,
   niceMax,
 } from "./scale";
 import { anchorLeft, ChartTooltip } from "./tooltip";
 
-/** Spend per calendar month with value labels above each bar. */
+/** A stacked per-model total for each calendar month. */
 
 interface MonthPoint {
   /** YYYY-MM */
@@ -24,7 +23,15 @@ interface MonthPoint {
 
 const HEIGHT = 220;
 
-function MonthBars({ months }: { months: MonthPoint[] }) {
+function MonthBars({
+  months,
+  valueFormatter,
+  valueLabel,
+}: {
+  months: MonthPoint[];
+  valueFormatter: (value: number) => string;
+  valueLabel: string;
+}) {
   const [hovered, setHovered] = useState<number | null>(null);
 
   const max = useMemo(() => niceMax(Math.max(...months.map((point) => point.value), 0)), [months]);
@@ -46,13 +53,13 @@ function MonthBars({ months }: { months: MonthPoint[] }) {
   return (
     <div className="relative">
       <svg
-        aria-label={`Monthly spend across ${months.length} months`}
+        aria-label={`Monthly ${valueLabel.toLowerCase()} across ${months.length} months`}
         className="block w-full select-none"
         onPointerLeave={() => setHovered(null)}
         role="img"
         viewBox={`0 0 ${CHART_WIDTH} ${HEIGHT + 24}`}
       >
-        <ChartGrid baseline={HEIGHT} format={formatUsd} max={max} y={y} />
+        <ChartGrid baseline={HEIGHT} format={valueFormatter} max={max} y={y} />
         {months.map((point, index) => {
           const hasValue = point.value > 0;
           const totalHeight = y(point.value);
@@ -93,7 +100,7 @@ function MonthBars({ months }: { months: MonthPoint[] }) {
                     x={x + barWidth / 2}
                     y={HEIGHT - totalHeight - 6}
                   >
-                    {formatUsd(point.value)}
+                    {valueFormatter(point.value)}
                   </text>
                 </>
               ) : null}
@@ -119,10 +126,10 @@ function MonthBars({ months }: { months: MonthPoint[] }) {
             .map((segment) => ({
               color: segment.color,
               label: segment.series,
-              value: formatUsd(segment.value),
+              value: valueFormatter(segment.value),
             }))}
           style={{ left: activeTooltip.left, top: `${activeTooltip.top}px` }}
-          subtitle={`${formatUsd(active.value)} total`}
+          subtitle={`${valueFormatter(active.value)} total`}
           title={formatMonthLong(active.month)}
         />
       ) : null}

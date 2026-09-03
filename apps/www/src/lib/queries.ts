@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import type { LeaderboardMetric, LeaderboardWindow } from "@tokenmaxxing/api-contract";
+import type { LeaderboardMetric, LeaderboardWindow } from "@nightmaxxing/api-contract";
 
 import { runApi } from "./api";
 

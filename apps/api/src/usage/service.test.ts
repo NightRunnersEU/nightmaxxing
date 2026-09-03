@@ -1,4 +1,4 @@
-import { DeviceMissing, type RawUsageReportInput } from "@tokenmaxxing/api-contract";
+import { DeviceMissing, type RawUsageReportInput } from "@nightmaxxing/api-contract";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 

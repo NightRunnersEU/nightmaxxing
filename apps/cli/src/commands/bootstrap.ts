@@ -17,7 +17,7 @@ class BootstrapServiceDecisionRequiredError extends Data.TaggedError(
   "BootstrapServiceDecisionRequiredError",
 )<{}> {
   override message =
-    "error: bootstrap needs a service decision in non-interactive terminals\nhint: run tokenmaxxing bootstrap --service yes or tokenmaxxing bootstrap --service no";
+    "error: bootstrap needs a service decision in non-interactive terminals\nhint: run nightmaxxing bootstrap --service yes or nightmaxxing bootstrap --service no";
 }
 
 class BootstrapCancelledError extends Data.TaggedError("BootstrapCancelledError")<{}> {

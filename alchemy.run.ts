@@ -7,7 +7,7 @@ import { Database } from "./apps/api/src/cloudflare/database";
 import ApiWorker from "./apps/api/src/worker";
 
 const stack = Stack(
-  "tokenmaxxing",
+  "nightmaxxing",
   {
     providers: Cloudflare.providers(),
     // Deploys (local `bun run deploy` and CI) share remote state on the
@@ -20,14 +20,14 @@ const stack = Stack(
     const db = yield* Database;
 
     const www = yield* Cloudflare.Website.Vite("www", {
-      name: "tokenmaxxing-www",
+      name: "nightmaxxing-www",
       rootDir: "./apps/www",
       url: false,
       compatibility: {
         date: "2026-06-02",
         flags: ["nodejs_compat"],
       },
-      domain: "tokenmaxxing.sh",
+      domain: "maxxing.nrght.eu",
       observability: {
         enabled: true,
       },
@@ -36,7 +36,7 @@ const stack = Stack(
         BUCKET: bucket,
       },
       dev: {
-        host: "tokenmaxxing.localhost",
+        host: "nightmaxxing.localhost",
         port: 3002,
         strictPort: true,
       },

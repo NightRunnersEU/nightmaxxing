@@ -1,7 +1,7 @@
 import { Context } from "effect";
 import { Effect } from "effect";
 
-import { DeviceMissing } from "@tokenmaxxing/api-contract";
+import { DeviceMissing } from "@nightmaxxing/api-contract";
 import type {
   CliIdentity,
   RawUsageReportInput,
@@ -13,7 +13,7 @@ import type {
   ServiceRepairStatusValue,
   SourceUsageStatsInput,
   UsageDayInput,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 
 import { sha256Hex } from "../auth/crypto";
 import type { DatabaseError } from "../database";
@@ -156,11 +156,11 @@ interface UsageRepositoryShape {
 }
 
 class UsageService extends Context.Service<UsageService, UsageServiceShape>()(
-  "@tokenmaxxing/api/UsageService",
+  "@nightmaxxing/api/UsageService",
 ) {}
 
 class UsageRepository extends Context.Service<UsageRepository, UsageRepositoryShape>()(
-  "@tokenmaxxing/api/UsageRepository",
+  "@nightmaxxing/api/UsageRepository",
 ) {}
 
 const UPSERT_CHUNK_SIZE = 40;
@@ -251,7 +251,7 @@ function requireDeviceId(identity: typeof CliIdentity.Type): Effect.Effect<strin
 
   return Effect.fail(
     new DeviceMissing({
-      message: "This token has no device; run `tokenmaxxing login` to mint a new one.",
+      message: "This token has no device; run `nightmaxxing login` to mint a new one.",
     }),
   );
 }

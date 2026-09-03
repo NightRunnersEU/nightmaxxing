@@ -2,7 +2,7 @@ import { Context } from "effect";
 import { Effect } from "effect";
 import { Option } from "effect";
 
-import { DEFAULT_LEADERBOARD_WINDOW, UserNotFound } from "@tokenmaxxing/api-contract";
+import { DEFAULT_LEADERBOARD_WINDOW, UserNotFound } from "@nightmaxxing/api-contract";
 import type {
   AuthUser,
   ProfileDailyGroupBy,
@@ -11,7 +11,7 @@ import type {
   ProfileIdentityResponse,
   ProfileResponse,
   ProfileStats,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 
 import type { DatabaseError } from "../database";
 import { windowStart } from "../leaderboard/service";
@@ -63,11 +63,11 @@ interface ProfilesRepositoryShape {
 }
 
 class ProfilesService extends Context.Service<ProfilesService, ProfilesServiceShape>()(
-  "@tokenmaxxing/api/ProfilesService",
+  "@nightmaxxing/api/ProfilesService",
 ) {}
 
 class ProfilesRepository extends Context.Service<ProfilesRepository, ProfilesRepositoryShape>()(
-  "@tokenmaxxing/api/ProfilesRepository",
+  "@nightmaxxing/api/ProfilesRepository",
 ) {}
 
 const makeProfilesService = Effect.fn("makeProfilesService")(function* () {

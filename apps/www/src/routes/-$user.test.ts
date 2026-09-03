@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProfileDailyResponse, ProfileDailyRow } from "@tokenmaxxing/api-contract";
+import type { ProfileDailyResponse, ProfileDailyRow } from "@nightmaxxing/api-contract";
 
 import { deriveCharts } from "./$user";
 
@@ -38,7 +38,12 @@ describe("deriveCharts", () => {
       ["2026-06-20", 0],
       ["2026-06-21", 0],
     ]);
-    expect(derived.months.map((month) => [month.month, month.value])).toEqual([["2026-06", 12]]);
+    expect(derived.spendMonths.map((month) => [month.month, month.value])).toEqual([
+      ["2026-06", 12],
+    ]);
+    expect(derived.tokenMonths.map((month) => [month.month, month.value])).toEqual([
+      ["2026-06", 300],
+    ]);
   });
 
   it("renders the heatmap across the full calendar year", () => {
@@ -65,7 +70,15 @@ describe("deriveCharts", () => {
 
     const derived = deriveCharts([], range);
 
-    expect(derived.months.map((month) => month.month)).toEqual([
+    expect(derived.spendMonths.map((month) => month.month)).toEqual([
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+    ]);
+    expect(derived.tokenMonths.map((month) => month.month)).toEqual([
       "2026-01",
       "2026-02",
       "2026-03",
@@ -99,6 +112,29 @@ describe("deriveCharts", () => {
       ["claude-opus-4-8", 20],
       ["claude-opus-4-7", 10],
     ]);
+  });
+
+  it("uses token totals and token-ranked model stacks for monthly tokens", () => {
+    const range: DailyRange = {
+      first: "2026-06-21",
+      last: "2026-06-21",
+    };
+    const rows: DailyRow[] = [
+      dailyRow({ costUsd: 20, key: "spend-heavy", totalTokens: 100 }),
+      dailyRow({ costUsd: 10, key: "token-heavy", totalTokens: 500 }),
+    ];
+
+    const derived = deriveCharts(rows, range);
+
+    expect(
+      derived.tokenMonths[0]?.segments
+        .filter((segment) => segment.value > 0)
+        .map((segment) => [segment.series, segment.value]),
+    ).toEqual([
+      ["token-heavy", 500],
+      ["spend-heavy", 100],
+    ]);
+    expect(derived.tokenMonths[0]?.value).toBe(600);
   });
 
   it("collapses only models below the chart limit into Other", () => {

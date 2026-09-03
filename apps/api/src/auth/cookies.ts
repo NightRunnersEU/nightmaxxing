@@ -3,7 +3,7 @@ import type { HttpServerRequest } from "effect/unstable/http";
 /**
  * Session/state cookie plumbing for the browser auth flow. Cookie attributes
  * derive from the request host, so one deploy serves dev
- * (api.tokenmaxxing.localhost, http) and prod (api.tokenmaxxing.sh,
+ * (api.nightmaxxing.localhost, http) and prod (api.maxxing.nrght.eu,
  * https) without environment plumbing.
  */
 
@@ -22,24 +22,24 @@ function cookieScopeFor(host: string): CookieScope {
   // The local dev provider proxies with a rewritten Host (127.0.0.1:port),
   // so any loopback-ish host means dev; origins are fixed per environment.
   const isDev =
-    hostname.endsWith(".tokenmaxxing.localhost") ||
+    hostname.endsWith(".nightmaxxing.localhost") ||
     hostname === "localhost" ||
     hostname === "127.0.0.1" ||
     hostname === "::1";
   if (isDev) {
     return {
-      apiOrigin: "http://api.tokenmaxxing.localhost:8788",
-      domain: ".tokenmaxxing.localhost",
+      apiOrigin: "http://api.nightmaxxing.localhost:8788",
+      domain: ".nightmaxxing.localhost",
       secure: false,
-      wwwOrigin: "http://tokenmaxxing.localhost:3002",
+      wwwOrigin: "http://nightmaxxing.localhost:3002",
     };
   }
 
   return {
-    apiOrigin: "https://api.tokenmaxxing.sh",
-    domain: ".tokenmaxxing.sh",
+    apiOrigin: "https://api.maxxing.nrght.eu",
+    domain: ".maxxing.nrght.eu",
     secure: true,
-    wwwOrigin: "https://tokenmaxxing.sh",
+    wwwOrigin: "https://maxxing.nrght.eu",
   };
 }
 

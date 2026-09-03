@@ -4,13 +4,13 @@ import type { ReactNode } from "react";
 import { Code } from "../components/ui/code";
 import { SITE_ORIGIN } from "../lib/og";
 
-const GITHUB_URL = "https://github.com/851-labs/tokenmaxxing";
+const GITHUB_URL = "https://github.com/NightRunnersEU/nightmaxxing";
 const DISCORD_URL = "https://discord.gg/WzX6BpfaRH";
 const CCUSAGE_URL = "https://ccusage.com/";
 
-const PRIVACY_TITLE = "Privacy Policy — tokenmaxxing.sh";
+const PRIVACY_TITLE = "Privacy Policy — maxxing.nrght.eu";
 const PRIVACY_DESCRIPTION =
-  "How tokenmaxxing handles your data: we collect only daily usage aggregates and never your prompts, code, or session content.";
+  "How nightmaxxing handles your data: we collect only daily usage aggregates and never your prompts, code, or session content.";
 const PRIVACY_URL = new URL("/privacy", SITE_ORIGIN).toString();
 
 const Route = createFileRoute("/privacy")({
@@ -36,7 +36,7 @@ function PrivacyPage() {
 
       <div className="mt-10 space-y-8">
         <Section title="What we collect">
-          tokenmaxxing collects daily usage aggregates only: the date, model name, agent source,
+          nightmaxxing collects daily usage aggregates only: the date, model name, agent source,
           token counts, and an API-equivalent cost estimate. When you sign in we also store your
           OAuth profile basics (username and avatar) and the hostnames of the devices you sync from.
         </Section>
@@ -52,7 +52,7 @@ function PrivacyPage() {
           locally from supported coding agents (Claude Code, Codex, OpenCode, Gemini CLI, and
           Copilot CLI). It only reads usage data that still exists on your computer; if an agent has
           already cleaned up its local logs, that data cannot be recovered or uploaded. You can
-          preview exactly what would be sent with <Code>tokenmaxxing sync --dry-run</Code>.
+          preview exactly what would be sent with <Code>nightmaxxing sync --dry-run</Code>.
         </Section>
 
         <Section title="What is public and what is private">
@@ -68,7 +68,7 @@ function PrivacyPage() {
 
         <Section title="Retention and deletion">
           You stay in control of your data. CLI tokens do not expire automatically, but you can
-          revoke them at any time with <Code>tokenmaxxing logout</Code> or from your settings page.
+          revoke them at any time with <Code>nightmaxxing logout</Code> or from your settings page.
           You can also remove device data from settings.
         </Section>
 

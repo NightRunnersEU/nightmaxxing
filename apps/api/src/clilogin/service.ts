@@ -2,8 +2,8 @@ import { Context } from "effect";
 import { Effect } from "effect";
 import { Option } from "effect";
 
-import { LoginCodeExpired, LoginCodeNotFound } from "@tokenmaxxing/api-contract";
-import type { CliLoginRequest } from "@tokenmaxxing/db";
+import { LoginCodeExpired, LoginCodeNotFound } from "@nightmaxxing/api-contract";
+import type { CliLoginRequest } from "@nightmaxxing/db";
 
 import type { DatabaseError } from "../database";
 import {
@@ -87,11 +87,11 @@ interface CliLoginRepositoryShape {
 }
 
 class CliLoginService extends Context.Service<CliLoginService, CliLoginServiceShape>()(
-  "@tokenmaxxing/api/CliLoginService",
+  "@nightmaxxing/api/CliLoginService",
 ) {}
 
 class CliLoginRepository extends Context.Service<CliLoginRepository, CliLoginRepositoryShape>()(
-  "@tokenmaxxing/api/CliLoginRepository",
+  "@nightmaxxing/api/CliLoginRepository",
 ) {}
 
 const makeCliLoginService = Effect.fn("makeCliLoginService")(function* () {

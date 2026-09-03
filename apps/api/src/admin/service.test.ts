@@ -6,7 +6,7 @@ import {
   Forbidden,
   type AdminUsersResponse,
   type ShadowBanUserResponse,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 
 import {
   AdminRepository,
@@ -85,10 +85,10 @@ function snapshot(input: Partial<AdminUserSnapshot> = {}): AdminUserSnapshot {
   return {
     accounts: [
       {
-        email: "alexandru@851.sh",
+        email: "admin@example.com",
         emailVerified: true,
         login: "alex",
-        provider: "google",
+        provider: "github",
       },
     ],
     deviceUsage: [
@@ -149,6 +149,7 @@ async function makeService(
   return (await Effect.runPromise(
     makeAdminService({
       fetchLatestCliRelease: () => Effect.succeed(options.latestCliRelease ?? latestRelease),
+      adminEmails: ["admin@example.com"],
       now: () => now,
     }).pipe(Effect.provideService(AdminRepository, repository)),
   )) as unknown as TestAdminService;
@@ -164,7 +165,7 @@ describe("AdminService.listUsers", () => {
   });
 
   it("returns debug rows and summary counts for the admin user", async () => {
-    const service = await makeService(makeRepository({ allowedEmails: ["alexandru@851.sh"] }));
+    const service = await makeService(makeRepository({ allowedEmails: ["admin@example.com"] }));
 
     const response = await Effect.runPromise(service.listUsers("user_123"));
 
@@ -216,14 +217,14 @@ describe("AdminService.listUsers", () => {
       latestCheckInAt: "2026-06-19T19:30:00.000Z",
       revokedTokenCount: 1,
       status: "healthy",
-      verifiedEmails: ["alexandru@851.sh"],
+      verifiedEmails: ["admin@example.com"],
     });
   });
 
   it("counts outdated versions separately from health status", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         snapshots: [
           snapshot({
             devices: [device({ version: "0.5.3" })],
@@ -271,7 +272,7 @@ describe("AdminService.listUsers", () => {
   it("does not mark a current alpha client outdated against stable latest", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         snapshots: [snapshot({ devices: [device({ version: "0.5.5-alpha.1" })] })],
       }),
     );
@@ -292,7 +293,7 @@ describe("AdminService.listUsers", () => {
   it("marks an alpha client outdated only against the alpha dist-tag", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         snapshots: [snapshot({ devices: [device({ version: "0.5.5-alpha.0" })] })],
       }),
     );
@@ -312,7 +313,7 @@ describe("AdminService.listUsers", () => {
   it("treats alpha update status as unknown when npm has no alpha dist-tag", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         snapshots: [snapshot({ devices: [device({ version: "0.5.5-alpha.0" })] })],
       }),
       {
@@ -339,7 +340,7 @@ describe("AdminService.listUsers", () => {
   it("only marks update-blocked when the device is outdated on its own channel", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         snapshots: [
           snapshot({
             devices: [
@@ -384,7 +385,7 @@ describe("AdminService.listUsers", () => {
   it("keeps multiple devices for one user visible as separate fleet rows", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         snapshots: [
           snapshot({
             deviceUsage: [
@@ -487,7 +488,7 @@ describe("AdminService.listUsers", () => {
   it("separates update-blocked from machine health", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         snapshots: [
           snapshot({
             devices: [
@@ -527,7 +528,7 @@ describe("AdminService.listUsers", () => {
   it("does not mark old clients update-blocked when auto-update telemetry is absent", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         snapshots: [snapshot({ devices: [device({ version: "0.5.3" })] })],
       }),
     );
@@ -546,7 +547,7 @@ describe("AdminService.listUsers", () => {
   });
 
   it("allows the pondorasti Gmail address as an internal admin email", async () => {
-    const service = await makeService(makeRepository({ allowedEmails: ["pondorasti@gmail.com"] }));
+    const service = await makeService(makeRepository({ allowedEmails: ["admin@example.com"] }));
 
     await expect(Effect.runPromise(service.listUsers("user_123"))).resolves.toMatchObject({
       summary: { totalUsers: 1 },
@@ -563,7 +564,7 @@ describe("AdminService shadow bans", () => {
     }> = [];
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         onSetShadowBan: (input) => {
           updates.push(input);
           return true;
@@ -593,7 +594,7 @@ describe("AdminService shadow bans", () => {
     const updates: Parameters<AdminRepositoryShape["setShadowBan"]>[0][] = [];
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         onSetShadowBan: (input) => {
           updates.push(input);
           return true;
@@ -615,7 +616,7 @@ describe("AdminService shadow bans", () => {
 
     const admin = await makeService(
       makeRepository({
-        allowedEmails: ["alexandru@851.sh"],
+        allowedEmails: ["admin@example.com"],
         onSetShadowBan: () => false,
       }),
     );

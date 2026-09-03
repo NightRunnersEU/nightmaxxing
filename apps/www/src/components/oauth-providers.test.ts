@@ -4,26 +4,16 @@ import { LOGIN_OAUTH_PROVIDERS, oauthProviderLinks } from "./oauth-providers";
 
 describe("oauthProviderLinks", () => {
   it("builds provider links without a redirect", () => {
-    const [github, google] = oauthProviderLinks();
+    const [github] = oauthProviderLinks();
     if (github === undefined) {
       throw new Error("expected GitHub provider");
     }
-    if (google === undefined) {
-      throw new Error("expected Google provider");
-    }
-
     expect(github.id).toBe("github");
     expect(github.label).toBe("Continue with GitHub");
-    expect(google.id).toBe("google");
-    expect(google.label).toBe("Continue with Google");
 
     const githubUrl = new URL(github.href);
     expect(githubUrl.pathname).toBe("/auth/github/start");
     expect(githubUrl.searchParams.get("redirect")).toBeNull();
-
-    const googleUrl = new URL(google.href);
-    expect(googleUrl.pathname).toBe("/auth/google/start");
-    expect(googleUrl.searchParams.get("redirect")).toBeNull();
   });
 
   it("builds GitHub-only login links", () => {

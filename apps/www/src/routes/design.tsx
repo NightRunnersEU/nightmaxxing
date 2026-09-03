@@ -134,7 +134,7 @@ function DesignPage() {
           ))}
           <div className="flex items-baseline gap-4">
             <span className="w-20 shrink-0 text-xs text-muted-foreground">font-mono</span>
-            <span className="font-mono text-sm">tokenmaxxing sync</span>
+            <span className="font-mono text-sm">nightmaxxing sync</span>
           </div>
           <div className="flex items-baseline gap-4">
             <span className="w-20 shrink-0 text-xs text-muted-foreground">weights</span>
@@ -234,7 +234,7 @@ function DesignPage() {
 
       <Section title="Code">
         <p className="text-sm text-muted-foreground">
-          Run <Code>npm install -g @851-labs/tokenmaxxing@latest</Code> to install.
+          Run <Code>npm install -g @nightrunners/nightmaxxing@latest</Code> to install.
         </p>
       </Section>
 
@@ -288,7 +288,7 @@ function OgPngPreview({ alt, src }: { alt: string; src: string }) {
       <div className="flex aspect-[1200/630] w-full flex-col justify-center gap-2 border border-border bg-muted p-4 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">PNG preview unavailable in local dev</p>
         <p>
-          Cloudflare Browser runs remotely and cannot capture <Code>tokenmaxxing.localhost</Code>.
+          Cloudflare Browser runs remotely and cannot capture <Code>nightmaxxing.localhost</Code>.
           Use the HTML card preview locally, or test PNG output from a deployed/preview URL.
         </p>
       </div>

@@ -3,7 +3,7 @@ import { Layer } from "effect";
 import { Option } from "effect";
 import { HttpServerRequest } from "effect/unstable/http";
 
-import { Authorization, CurrentUser, Unauthorized } from "@tokenmaxxing/api-contract";
+import { Authorization, CurrentUser, Unauthorized } from "@nightmaxxing/api-contract";
 
 import { CLI_TOKEN_PREFIX } from "../../auth/crypto";
 import { sessionTokenFrom } from "../../auth/cookies";

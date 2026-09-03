@@ -7,7 +7,7 @@ import { ConfigLive } from "./config";
 import { ConsoleLive } from "./console";
 import { TerminalLive } from "./terminal";
 
-export { ApiClientService, type TokenmaxxingApiClient } from "./api-client";
+export { ApiClientService, type NightmaxxingApiClient } from "./api-client";
 export { BrowserOpenError, BrowserService } from "./browser";
 export { ClockService } from "./clock";
 export { ConfigService, type CliConfig } from "./config";

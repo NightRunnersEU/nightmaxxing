@@ -1,4 +1,4 @@
-import { DeviceNotFound, type CliTokenSummary } from "@tokenmaxxing/api-contract";
+import { DeviceNotFound, type CliTokenSummary } from "@nightmaxxing/api-contract";
 import { Effect, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 

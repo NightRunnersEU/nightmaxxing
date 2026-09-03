@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import type { ProfileDailyResponse, ProfileResponse } from "@tokenmaxxing/api-contract";
+import type { ProfileDailyResponse, ProfileResponse } from "@nightmaxxing/api-contract";
 
 import type { OgBrowser, OgR2Bucket, OgRuntimeEnv } from "../lib/og-runtime";
 import { ProfileOgCard } from "./og-card/$login";
@@ -31,7 +31,7 @@ describe("profile OG image route", () => {
     const key = ogCacheKey("pondorasti", "abc");
     const bucket = memoryBucket([[key, PNG_FROM_CACHE]]);
     const captureScreenshot = screenshotSpy(PNG_FROM_BROWSER);
-    const response = await requestOgImage("https://tokenmaxxing.sh/og/pondorasti.png?v=abc", {
+    const response = await requestOgImage("https://maxxing.nrght.eu/og/pondorasti.png?v=abc", {
       captureScreenshot,
       env: { BUCKET: bucket },
     });
@@ -49,7 +49,7 @@ describe("profile OG image route", () => {
     const bucket = memoryBucket();
     const browser = browserBinding();
     const captureScreenshot = screenshotSpy(PNG_FROM_BROWSER);
-    const response = await requestOgImage("https://tokenmaxxing.sh/og/pondorasti.png?v=abc", {
+    const response = await requestOgImage("https://maxxing.nrght.eu/og/pondorasti.png?v=abc", {
       captureScreenshot,
       env: { BROWSER: browser, BUCKET: bucket },
     });
@@ -59,7 +59,7 @@ describe("profile OG image route", () => {
     expect(response.headers.get("x-og-source")).toBe("browser");
     expect(captureScreenshot).toHaveBeenCalledWith(
       browser,
-      "https://tokenmaxxing.sh/og-card/pondorasti",
+      "https://maxxing.nrght.eu/og-card/pondorasti",
     );
     expect(bucket.putCalls.map((call) => call.key)).toEqual([ogCacheKey("pondorasti", "abc")]);
   });
@@ -73,7 +73,7 @@ describe("profile OG image route", () => {
         throw new Error("browser failed");
       },
     );
-    const response = await requestOgImage("https://tokenmaxxing.sh/og/pondorasti.png?v=new", {
+    const response = await requestOgImage("https://maxxing.nrght.eu/og/pondorasti.png?v=new", {
       captureScreenshot,
       env: { BROWSER: browserBinding(), BUCKET: bucket },
     });
@@ -86,7 +86,7 @@ describe("profile OG image route", () => {
   });
 
   it("marks fallback png bytes when Browser Run is unavailable", async () => {
-    const response = await requestOgImage("https://tokenmaxxing.sh/og/pondorasti.png", {
+    const response = await requestOgImage("https://maxxing.nrght.eu/og/pondorasti.png", {
       env: {},
     });
     const bytes = new Uint8Array(await response.arrayBuffer());
@@ -110,7 +110,7 @@ describe("profile OG image route", () => {
 
     const response = await handler({
       params: { login: "missing" },
-      request: new Request("https://tokenmaxxing.sh/og/missing.png"),
+      request: new Request("https://maxxing.nrght.eu/og/missing.png"),
     });
 
     expect(response.status).toBe(404);

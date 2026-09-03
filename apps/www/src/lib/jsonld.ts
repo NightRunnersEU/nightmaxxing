@@ -1,19 +1,15 @@
-import type { ProfileResponse } from "@tokenmaxxing/api-contract";
+import type { ProfileResponse } from "@nightmaxxing/api-contract";
 
 import { profileOgDescription, profileOgTitle, SITE_ORIGIN } from "./og";
 
 type Profile = typeof ProfileResponse.Type;
 
-const ORGANIZATION_NAME = "851 Labs";
+const ORGANIZATION_NAME = "NightRunnersEU";
 const ORGANIZATION_ID = `${SITE_ORIGIN}/#organization`;
 const WEBSITE_ID = `${SITE_ORIGIN}/#website`;
-const SITE_NAME = "tokenmaxxing.sh";
+const SITE_NAME = "maxxing.nrght.eu";
 
-const ORGANIZATION_SAME_AS = [
-  "https://github.com/851-labs",
-  "https://x.com/851labs",
-  "https://discord.gg/851labs",
-];
+const ORGANIZATION_SAME_AS = ["https://github.com/NightRunnersEU"];
 
 function organizationSchema(): Record<string, unknown> {
   return {
@@ -42,15 +38,18 @@ function softwareApplicationSchema(): Record<string, unknown> {
   return {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "tokenmaxxing",
+    name: "nightmaxxing",
     description:
-      "CLI that syncs local LLM agent usage and publishes it to the tokenmaxxing.sh leaderboard.",
+      "CLI that syncs local LLM agent usage and publishes it to the maxxing.nrght.eu leaderboard.",
     applicationCategory: "DeveloperApplication",
     operatingSystem: "macOS, Linux, Windows",
     url: SITE_ORIGIN,
-    downloadUrl: "https://www.npmjs.com/package/@851-labs/tokenmaxxing",
-    installUrl: "https://www.npmjs.com/package/@851-labs/tokenmaxxing",
-    softwareHelp: { "@type": "CreativeWork", text: "npm install -g @851-labs/tokenmaxxing@latest" },
+    downloadUrl: "https://www.npmjs.com/package/@nightrunners/nightmaxxing",
+    installUrl: "https://www.npmjs.com/package/@nightrunners/nightmaxxing",
+    softwareHelp: {
+      "@type": "CreativeWork",
+      text: "npm install -g @nightrunners/nightmaxxing@latest",
+    },
     publisher: { "@id": ORGANIZATION_ID },
     offers: {
       "@type": "Offer",

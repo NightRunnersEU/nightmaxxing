@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import type { StatsResponse } from "@tokenmaxxing/api-contract";
+import type { StatsResponse } from "@nightmaxxing/api-contract";
 
 import { makeStatsService, StatsRepository, statsWindowStart, type StatsSnapshot } from "./service";
 

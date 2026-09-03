@@ -1,12 +1,12 @@
 import { Effect, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { UserNotFound } from "@tokenmaxxing/api-contract";
+import { UserNotFound } from "@nightmaxxing/api-contract";
 import type {
   ProfileDailyResponse,
   ProfileIdentityResponse,
   ProfileResponse,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 
 import { makeProfilesService, profileDailyRange, ProfilesRepository } from "./service";
 

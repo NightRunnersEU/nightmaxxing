@@ -7,7 +7,7 @@ import {
   DEFAULT_LEADERBOARD_WINDOW,
   type LeaderboardMetric,
   type LeaderboardWindow,
-} from "@tokenmaxxing/api-contract";
+} from "@nightmaxxing/api-contract";
 import { useState, type ReactNode } from "react";
 import { Check, Copy } from "@phosphor-icons/react/ssr";
 import { z } from "zod";
@@ -82,17 +82,17 @@ const METRICS: { label: string; value: typeof LeaderboardMetric.Type }[] = [
 
 const BOOTSTRAP_COMMANDS = [
   {
-    command: "npm install -g @851-labs/tokenmaxxing@latest\ntokenmaxxing bootstrap",
+    command: "npm install -g @nightrunners/nightmaxxing@latest\nnightmaxxing bootstrap",
     label: "npm",
     value: "npm",
   },
   {
-    command: "bun add -g --trust @851-labs/tokenmaxxing@latest\ntokenmaxxing bootstrap",
+    command: "bun add -g --trust @nightrunners/nightmaxxing@latest\nnightmaxxing bootstrap",
     label: "bun",
     value: "bun",
   },
   {
-    command: "pnpm add -g @851-labs/tokenmaxxing@latest\ntokenmaxxing bootstrap",
+    command: "pnpm add -g @nightrunners/nightmaxxing@latest\nnightmaxxing bootstrap",
     label: "pnpm",
     value: "pnpm",
   },
@@ -110,11 +110,11 @@ const SUPPORTED_AGENTS = [
 
 const FAQ_ITEMS: { answer: ReactNode; answerText: string; question: string }[] = [
   {
-    question: "What is tokenmaxxing?",
+    question: "What is nightmaxxing?",
     answer:
-      "tokenmaxxing is a public leaderboard for LLM agent usage. It syncs your local usage from supported coding agents, turns it into daily token and spend totals, and lets you compare with other users.",
+      "nightmaxxing is a public leaderboard for LLM agent usage. It syncs your local usage from supported coding agents, turns it into daily token and spend totals, and lets you compare with other users.",
     answerText:
-      "tokenmaxxing is a public leaderboard for LLM agent usage. It syncs your local usage from supported coding agents, turns it into daily token and spend totals, and lets you compare with other users.",
+      "nightmaxxing is a public leaderboard for LLM agent usage. It syncs your local usage from supported coding agents, turns it into daily token and spend totals, and lets you compare with other users.",
   },
   {
     question: "How do I join the leaderboard?",
@@ -122,10 +122,10 @@ const FAQ_ITEMS: { answer: ReactNode; answerText: string; question: string }[] =
       <>
         Install the CLI, then run the bootstrap command.
         <span className="mt-3 block">
-          <Code>npm install -g @851-labs/tokenmaxxing@latest</Code>
+          <Code>npm install -g @nightrunners/nightmaxxing@latest</Code>
         </span>
         <span className="mt-2 block">
-          <Code>tokenmaxxing bootstrap</Code>
+          <Code>nightmaxxing bootstrap</Code>
         </span>
         <span className="mt-3 block">
           Bootstrap signs you in, syncs your usage, and can set up automatic syncing.
@@ -133,13 +133,13 @@ const FAQ_ITEMS: { answer: ReactNode; answerText: string; question: string }[] =
       </>
     ),
     answerText:
-      "Install the CLI, then run the bootstrap command. Run `npm install -g @851-labs/tokenmaxxing@latest`, then `tokenmaxxing bootstrap`. Bootstrap signs you in, syncs your usage, and can set up automatic syncing.",
+      "Install the CLI, then run the bootstrap command. Run `npm install -g @nightrunners/nightmaxxing@latest`, then `nightmaxxing bootstrap`. Bootstrap signs you in, syncs your usage, and can set up automatic syncing.",
   },
   {
     question: "Which agents does it support?",
     answer: (
       <>
-        tokenmaxxing uses{" "}
+        nightmaxxing uses{" "}
         <a
           className="font-medium text-foreground hover:underline"
           href="https://ccusage.com/"
@@ -152,7 +152,7 @@ const FAQ_ITEMS: { answer: ReactNode; answerText: string; question: string }[] =
       </>
     ),
     answerText:
-      "tokenmaxxing uses ccusage to parse local usage from Claude Code, Codex, OpenCode, Gemini CLI, and Copilot CLI.",
+      "nightmaxxing uses ccusage to parse local usage from Claude Code, Codex, OpenCode, Gemini CLI, and Copilot CLI.",
   },
   {
     question: "What data gets uploaded?",
@@ -164,9 +164,9 @@ const FAQ_ITEMS: { answer: ReactNode; answerText: string; question: string }[] =
   {
     question: "Why is usage data missing?",
     answer:
-      "tokenmaxxing only reads usage data that still exists on your local computer. Some agents clean up old local logs automatically; for example, Claude Code can retain logs for only 30 days by default. If older local data has already been deleted, tokenmaxxing cannot recover or upload it.",
+      "nightmaxxing only reads usage data that still exists on your local computer. Some agents clean up old local logs automatically; for example, Claude Code can retain logs for only 30 days by default. If older local data has already been deleted, nightmaxxing cannot recover or upload it.",
     answerText:
-      "tokenmaxxing only reads usage data that still exists on your local computer. Some agents clean up old local logs automatically; for example, Claude Code can retain logs for only 30 days by default. If older local data has already been deleted, tokenmaxxing cannot recover or upload it.",
+      "nightmaxxing only reads usage data that still exists on your local computer. Some agents clean up old local logs automatically; for example, Claude Code can retain logs for only 30 days by default. If older local data has already been deleted, nightmaxxing cannot recover or upload it.",
   },
   {
     question: "Are profiles public?",
@@ -179,37 +179,37 @@ const FAQ_ITEMS: { answer: ReactNode; answerText: string; question: string }[] =
     question: "Can I sync multiple machines?",
     answer: (
       <>
-        Yes. Run <Code>tokenmaxxing bootstrap</Code> on each machine. Your profile aggregates usage
+        Yes. Run <Code>nightmaxxing bootstrap</Code> on each machine. Your profile aggregates usage
         across devices, and sync is idempotent, so you can run it as often as you want.
       </>
     ),
     answerText:
-      "Yes. Run `tokenmaxxing bootstrap` on each machine. Your profile aggregates usage across devices, and sync is idempotent, so you can run it as often as you want.",
+      "Yes. Run `nightmaxxing bootstrap` on each machine. Your profile aggregates usage across devices, and sync is idempotent, so you can run it as often as you want.",
   },
   {
     question: "How can I sync usage automatically?",
     answer: (
       <>
-        Run <Code>tokenmaxxing service install</Code> to install an optional background service that
-        syncs every 5 minutes. Use <Code>tokenmaxxing service status</Code> to check the last run
-        and <Code>tokenmaxxing service doctor</Code> to inspect scheduler files, auth, locks,
+        Run <Code>nightmaxxing service install</Code> to install an optional background service that
+        syncs every 5 minutes. Use <Code>nightmaxxing service status</Code> to check the last run
+        and <Code>nightmaxxing service doctor</Code> to inspect scheduler files, auth, locks,
         auto-update settings, and recent logs.
       </>
     ),
     answerText:
-      "Run `tokenmaxxing service install` to install an optional background service that syncs every 5 minutes. Use `tokenmaxxing service status` to check the last run and `tokenmaxxing service doctor` to inspect scheduler files, auth, locks, auto-update settings, and recent logs.",
+      "Run `nightmaxxing service install` to install an optional background service that syncs every 5 minutes. Use `nightmaxxing service status` to check the last run and `nightmaxxing service doctor` to inspect scheduler files, auth, locks, auto-update settings, and recent logs.",
   },
   {
     question: "Can I delete or revoke access?",
     answer: (
       <>
         Yes. CLI tokens do not expire automatically, but you can revoke them with{" "}
-        <Code>tokenmaxxing logout</Code> or from settings. You can also remove device data from your
+        <Code>nightmaxxing logout</Code> or from settings. You can also remove device data from your
         settings page.
       </>
     ),
     answerText:
-      "Yes. CLI tokens do not expire automatically, but you can revoke them with `tokenmaxxing logout` or from settings. You can also remove device data from your settings page.",
+      "Yes. CLI tokens do not expire automatically, but you can revoke them with `nightmaxxing logout` or from settings. You can also remove device data from your settings page.",
   },
   {
     question: "How is spend calculated?",
@@ -222,13 +222,13 @@ const FAQ_ITEMS: { answer: ReactNode; answerText: string; question: string }[] =
     question: "Can I preview what will sync?",
     answer: (
       <>
-        Yes. Run <Code>tokenmaxxing sync --dry-run</Code> to see what would be pushed. You can also
+        Yes. Run <Code>nightmaxxing sync --dry-run</Code> to see what would be pushed. You can also
         limit the range with <Code>--since YYYY-MM-DD</Code> or choose sources with flags like{" "}
         <Code>--sources claude,codex</Code>.
       </>
     ),
     answerText:
-      "Yes. Run `tokenmaxxing sync --dry-run` to see what would be pushed. You can also limit the range with `--since YYYY-MM-DD` or choose sources with flags like `--sources claude,codex`.",
+      "Yes. Run `nightmaxxing sync --dry-run` to see what would be pushed. You can also limit the range with `--since YYYY-MM-DD` or choose sources with flags like `--sources claude,codex`.",
   },
 ];
 

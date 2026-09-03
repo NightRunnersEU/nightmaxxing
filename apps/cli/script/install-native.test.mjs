@@ -42,44 +42,49 @@ describe("native preinstall package selection", () => {
   it("orders linux glibc and musl x64 candidates with baseline fallback", () => {
     expect(nativePackageNames({ arch: "x64", avx2: true, musl: false, platform: "linux" })).toEqual(
       [
-        "@851-labs/tokenmaxxing-linux-x64",
-        "@851-labs/tokenmaxxing-linux-x64-baseline",
-        "@851-labs/tokenmaxxing-linux-x64-musl",
-        "@851-labs/tokenmaxxing-linux-x64-baseline-musl",
+        "@nightrunners/nightmaxxing-linux-x64",
+        "@nightrunners/nightmaxxing-linux-x64-baseline",
+        "@nightrunners/nightmaxxing-linux-x64-musl",
+        "@nightrunners/nightmaxxing-linux-x64-baseline-musl",
       ],
     );
     expect(nativePackageNames({ arch: "x64", avx2: false, musl: true, platform: "linux" })).toEqual(
       [
-        "@851-labs/tokenmaxxing-linux-x64-baseline-musl",
-        "@851-labs/tokenmaxxing-linux-x64-musl",
-        "@851-labs/tokenmaxxing-linux-x64-baseline",
-        "@851-labs/tokenmaxxing-linux-x64",
+        "@nightrunners/nightmaxxing-linux-x64-baseline-musl",
+        "@nightrunners/nightmaxxing-linux-x64-musl",
+        "@nightrunners/nightmaxxing-linux-x64-baseline",
+        "@nightrunners/nightmaxxing-linux-x64",
       ],
     );
   });
 
   it("orders darwin and windows native packages with arm64 exact matches", () => {
     expect(nativePackageNames({ arch: "x64", avx2: false, platform: "darwin" })).toEqual([
-      "@851-labs/tokenmaxxing-darwin-x64-baseline",
-      "@851-labs/tokenmaxxing-darwin-x64",
+      "@nightrunners/nightmaxxing-darwin-x64-baseline",
+      "@nightrunners/nightmaxxing-darwin-x64",
     ]);
     expect(nativePackageNames({ arch: "arm64", platform: "windows" })).toEqual([
-      "@851-labs/tokenmaxxing-windows-arm64",
+      "@nightrunners/nightmaxxing-windows-arm64",
     ]);
   });
 
   it("uses native executable names inside target packages", () => {
-    expect(binaryName("darwin")).toBe("tokenmaxxing");
-    expect(binaryName("linux")).toBe("tokenmaxxing");
-    expect(binaryName("windows")).toBe("tokenmaxxing.exe");
+    expect(binaryName("darwin")).toBe("nightmaxxing");
+    expect(binaryName("linux")).toBe("nightmaxxing");
+    expect(binaryName("windows")).toBe("nightmaxxing.exe");
   });
 
   it("fallback launcher resolves an installed optional native package", () => {
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "tokenmaxxing-native-launcher-"));
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "nightmaxxing-native-launcher-"));
     try {
-      const packageName = "@851-labs/tokenmaxxing-darwin-arm64";
-      const packageDir = path.join(temp, "node_modules", "@851-labs", "tokenmaxxing-darwin-arm64");
-      const binaryPath = path.join(packageDir, "bin", "tokenmaxxing");
+      const packageName = "@nightrunners/nightmaxxing-darwin-arm64";
+      const packageDir = path.join(
+        temp,
+        "node_modules",
+        "@nightrunners",
+        "nightmaxxing-darwin-arm64",
+      );
+      const binaryPath = path.join(packageDir, "bin", "nightmaxxing");
       fs.mkdirSync(path.dirname(binaryPath), { recursive: true });
       fs.writeFileSync(
         path.join(packageDir, "package.json"),
@@ -105,9 +110,9 @@ describe("native preinstall package selection", () => {
   it("fallback launcher recovery message explains shadowed and script-blocked installs", () => {
     const message = recoveryMessage({ arch: "arm64", platform: "darwin" });
 
-    expect(message).toContain("which -a tokenmaxxing");
-    expect(message).toContain("bun add -g --trust @851-labs/tokenmaxxing");
-    expect(message).toContain("bun remove -g @851-labs/tokenmaxxing");
-    expect(message).toContain("npx -y @851-labs/tokenmaxxing@latest bootstrap");
+    expect(message).toContain("which -a nightmaxxing");
+    expect(message).toContain("bun add -g --trust @nightrunners/nightmaxxing");
+    expect(message).toContain("bun remove -g @nightrunners/nightmaxxing");
+    expect(message).toContain("npx -y @nightrunners/nightmaxxing@latest bootstrap");
   });
 });

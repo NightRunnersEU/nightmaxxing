@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { DeviceSummary } from "@tokenmaxxing/api-contract";
+import { DeviceSummary } from "@nightmaxxing/api-contract";
 import { Key, Laptop } from "@phosphor-icons/react/ssr";
 
 import { Button } from "../components/ui/button";
@@ -89,7 +89,7 @@ function DevicesSection({ login }: { login: string }) {
       <div className="-mx-4 mt-4 overflow-hidden border-y border-border">
         {data.devices.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">
-            No devices yet — run <Code>tokenmaxxing login</Code> on a machine to add it.
+            No devices yet — run <Code>nightmaxxing login</Code> on a machine to add it.
           </p>
         ) : (
           <table className="w-full text-sm">
@@ -137,7 +137,7 @@ function TokensSection() {
         <Key className="size-4" /> CLI tokens
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Tokens never expire — revoking here (or `tokenmaxxing logout` on the device) is the only
+        Tokens never expire — revoking here (or `nightmaxxing logout` on the device) is the only
         kill switch.
       </p>
       {revoke.isError ? (

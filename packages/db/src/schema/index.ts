@@ -22,7 +22,7 @@ const users = sqliteTable("users", {
 const userAccounts = sqliteTable(
   "user_accounts",
   {
-    provider: text("provider", { enum: ["github", "google"] }).notNull(),
+    provider: text("provider", { enum: ["github"] }).notNull(),
     providerAccountId: text("provider_account_id").notNull(),
     userId: text("user_id")
       .notNull()

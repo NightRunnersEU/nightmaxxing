@@ -7,7 +7,7 @@ import {
   autoUpdateCommandDescription,
   type AutoUpdateManager,
   type CommandInstall,
-  findTokenmaxxingCommandInstall,
+  findNightmaxxingCommandInstall,
   isEphemeralCommandPath,
   isServiceInstalled,
   refreshServiceAfterUpdate,
@@ -43,14 +43,14 @@ type VersionCheckResult =
 
 class UpgradeCommandNotFoundError extends Data.TaggedError("UpgradeCommandNotFoundError")<{}> {
   override message =
-    "error: tokenmaxxing is not installed globally\nhint: install it with bun, npm, pnpm, or yarn";
+    "error: nightmaxxing is not installed globally\nhint: install it with bun, npm, pnpm, or yarn";
 }
 
 class UpgradeEphemeralCommandError extends Data.TaggedError("UpgradeEphemeralCommandError")<{
   readonly commandPath: string;
 }> {
   override get message() {
-    return `error: tokenmaxxing resolved to a temporary runner path\npath: ${this.commandPath}\nhint: install it globally with bun, npm, pnpm, or yarn before running tokenmaxxing upgrade`;
+    return `error: nightmaxxing resolved to a temporary runner path\npath: ${this.commandPath}\nhint: install it globally with bun, npm, pnpm, or yarn before running nightmaxxing upgrade`;
   }
 }
 
@@ -59,7 +59,7 @@ class UpgradeManagerError extends Data.TaggedError("UpgradeManagerError")<{
   readonly resolvedCommandPath: string;
 }> {
   override get message() {
-    return `error: could not detect how tokenmaxxing was globally installed\npath: ${this.commandPath}\nresolved path: ${this.resolvedCommandPath}\nhint: reinstall with bun, npm, pnpm, or yarn`;
+    return `error: could not detect how nightmaxxing was globally installed\npath: ${this.commandPath}\nresolved path: ${this.resolvedCommandPath}\nhint: reinstall with bun, npm, pnpm, or yarn`;
   }
 }
 
@@ -67,14 +67,14 @@ class UpgradeFailedError extends Data.TaggedError("UpgradeFailedError")<{
   readonly cause: unknown;
 }> {
   override message =
-    "error: failed to upgrade tokenmaxxing\nhint: try upgrading with your package manager";
+    "error: failed to upgrade nightmaxxing\nhint: try upgrading with your package manager";
 }
 
 class UpgradeVersionCheckError extends Data.TaggedError("UpgradeVersionCheckError")<{
   readonly cause: unknown;
 }> {}
 
-const npmLatestUrl = "https://registry.npmjs.org/@851-labs%2Ftokenmaxxing/latest";
+const npmLatestUrl = "https://registry.npmjs.org/@nightrunners%2Fnightmaxxing/latest";
 
 const upgradeCommand = Command.make(
   "upgrade",
@@ -107,7 +107,7 @@ function upgradeProgram(
     const platform = runtime.platform ?? process.platform;
     const installSpinner = yield* humanSpinner("Detecting install method", options);
     const install = yield* (
-      runtime.findCommandInstall ?? (() => findTokenmaxxingCommandInstall(env, platform))
+      runtime.findCommandInstall ?? (() => findNightmaxxingCommandInstall(env, platform))
     )().pipe(
       Effect.flatMap((value) =>
         value === null ? Effect.fail(new UpgradeCommandNotFoundError()) : Effect.succeed(value),
@@ -264,7 +264,7 @@ function getLatestCliVersion(): Effect.Effect<string, UpgradeVersionCheckError> 
 function formatUpgradeSuccess(versionCheck: VersionCheckResult): string {
   return versionCheck._tag === "available"
     ? `Upgraded to v${versionCheck.latestVersion}`
-    : "Upgraded tokenmaxxing";
+    : "Upgraded nightmaxxing";
 }
 
 function registryLatestVersion(body: unknown): string | null {
@@ -353,7 +353,7 @@ function refreshInstalledService(
 function formatServiceRefreshResult(result: ServiceRefreshResult): string {
   switch (result._tag) {
     case "failed":
-      return "Service: refresh failed; run tokenmaxxing service install if needed";
+      return "Service: refresh failed; run nightmaxxing service install if needed";
     case "not-installed":
       return "Service: not installed";
     case "refreshed":

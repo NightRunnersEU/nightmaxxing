@@ -3,8 +3,8 @@ import { Layer } from "effect";
 import { Option } from "effect";
 import { HttpServerRequest } from "effect/unstable/http";
 
-import { CliAuth, CurrentCliIdentity, Unauthorized } from "@tokenmaxxing/api-contract";
-import type { CliIdentity } from "@tokenmaxxing/api-contract";
+import { CliAuth, CurrentCliIdentity, Unauthorized } from "@nightmaxxing/api-contract";
+import type { CliIdentity } from "@nightmaxxing/api-contract";
 
 import { TokensService } from "../../tokens/service";
 
@@ -34,7 +34,7 @@ const CliAuthLive = Layer.effect(
                 .pipe(Effect.catchCause(() => Effect.succeedNone));
         if (Option.isNone(identity)) {
           return yield* Effect.fail(
-            new Unauthorized({ message: "Run `tokenmaxxing login` first." }),
+            new Unauthorized({ message: "Run `nightmaxxing login` first." }),
           );
         }
 

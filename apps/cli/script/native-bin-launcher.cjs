@@ -27,7 +27,7 @@ function detectArch(value = os.arch()) {
 
 function binaryName(platform = detectPlatform()) {
   platform = detectPlatform(platform);
-  return platform === "windows" ? "tokenmaxxing.exe" : "tokenmaxxing";
+  return platform === "windows" ? "nightmaxxing.exe" : "nightmaxxing";
 }
 
 function supportsAvx2(options = {}) {
@@ -104,7 +104,7 @@ function nativePackageNames(options = {}) {
   const arch = options.arch ?? detectArch();
   const musl = options.musl ?? isMusl(platform);
   const baseline = arch === "x64" && !(options.avx2 ?? supportsAvx2({ arch, platform }));
-  const base = `@851-labs/tokenmaxxing-${platform}-${arch}`;
+  const base = `@nightrunners/nightmaxxing-${platform}-${arch}`;
 
   if (platform === "linux") {
     if (arch === "arm64") {
@@ -148,7 +148,7 @@ function readPackageJson(packageDir = __dirname) {
     }
   }
 
-  throw new Error("Unable to read @851-labs/tokenmaxxing package.json");
+  throw new Error("Unable to read @nightrunners/nightmaxxing package.json");
 }
 
 function packageResolvePaths(packageDir = __dirname) {
@@ -189,18 +189,18 @@ function findNativeBinary(options = {}) {
 function recoveryMessage(options = {}) {
   const packages = options.packages ?? nativePackageNames(options);
   return [
-    "Error: @851-labs/tokenmaxxing could not find a native binary for this platform.",
+    "Error: @nightrunners/nightmaxxing could not find a native binary for this platform.",
     "",
     "This usually means your package manager skipped postinstall scripts or optional dependencies.",
     "It can also happen when an older broken global install is earlier in PATH.",
     "",
     "Debug:",
-    "  which -a tokenmaxxing",
+    "  which -a nightmaxxing",
     "",
     "Fix:",
-    "  bun remove -g @851-labs/tokenmaxxing && bun add -g --trust @851-labs/tokenmaxxing",
-    "  npm install -g @851-labs/tokenmaxxing@latest",
-    "  npx -y @851-labs/tokenmaxxing@latest bootstrap",
+    "  bun remove -g @nightrunners/nightmaxxing && bun add -g --trust @nightrunners/nightmaxxing",
+    "  npm install -g @nightrunners/nightmaxxing@latest",
+    "  npx -y @nightrunners/nightmaxxing@latest bootstrap",
     "",
     `Expected one of: ${packages.length === 0 ? "(none)" : packages.join(", ")}`,
   ].join("\n");
@@ -219,7 +219,7 @@ function runBinary(target, argv = process.argv.slice(2)) {
 }
 
 function runNativeBinary(options = {}) {
-  const envPath = process.env.TOKENMAXXING_BIN_PATH;
+  const envPath = process.env.NIGHTMAXXING_BIN_PATH;
   if (envPath) {
     runBinary(envPath, options.argv);
     return;

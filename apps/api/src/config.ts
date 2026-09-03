@@ -3,45 +3,40 @@ import { Context } from "effect";
 import { Effect } from "effect";
 import * as Redacted from "effect/Redacted";
 
-const productName = "Tokenmaxxing";
-const apiWorkerName = "tokenmaxxing-api";
+const productName = "Nightmaxxing";
+const apiWorkerName = "nightmaxxing-api";
 
-type TokenmaxxingSandbox = "development" | "production";
+type NightmaxxingSandbox = "development" | "production";
 
 interface RuntimeUrls {
   apiUrl: string;
-  sandbox: TokenmaxxingSandbox;
+  sandbox: NightmaxxingSandbox;
   wwwUrl: string;
 }
 
 const runtimeUrlTable = {
   development: {
-    apiUrl: "http://api.tokenmaxxing.localhost:8788",
+    apiUrl: "http://api.nightmaxxing.localhost:8788",
     sandbox: "development",
-    wwwUrl: "http://tokenmaxxing.localhost:3002",
+    wwwUrl: "http://nightmaxxing.localhost:3002",
   },
   production: {
-    apiUrl: "https://api.tokenmaxxing.sh",
+    apiUrl: "https://api.maxxing.nrght.eu",
     sandbox: "production",
-    wwwUrl: "https://tokenmaxxing.sh",
+    wwwUrl: "https://maxxing.nrght.eu",
   },
-} as const satisfies Record<TokenmaxxingSandbox, RuntimeUrls>;
+} as const satisfies Record<NightmaxxingSandbox, RuntimeUrls>;
 
 interface GitHubOAuthConfig {
   clientId: string;
   clientSecret: string;
 }
 
-interface GoogleOAuthConfig {
-  clientId: string;
-  clientSecret: string;
-}
-
 interface AppConfigShape {
+  adminEmails: readonly string[];
   apiWorkerName: string;
   corsOrigins: string[];
   github: GitHubOAuthConfig;
-  google: GoogleOAuthConfig;
   productName: string;
   urls: RuntimeUrls;
 }
@@ -53,25 +48,20 @@ interface AppConfigShape {
  * everywhere else.
  */
 class AppConfig extends Context.Service<AppConfig, AppConfigShape>()(
-  "@tokenmaxxing/api/AppConfig",
+  "@nightmaxxing/api/AppConfig",
 ) {
   /** Secrets resolve from .env at deploy time and bind as secret_text. */
   static readonly fromEnv = Effect.gen(function* () {
+    const adminEmails = yield* Config.string("ADMIN_EMAILS");
     const githubClientId = yield* Config.string("GITHUB_CLIENT_ID");
     const githubClientSecret = yield* Config.redacted("GITHUB_CLIENT_SECRET");
-    const googleClientId = yield* Config.string("GOOGLE_CLIENT_ID");
-    const googleClientSecret = yield* Config.redacted("GOOGLE_CLIENT_SECRET");
 
     return makeAppConfig(
-      {},
+      { adminEmails },
       {
         github: {
           clientId: githubClientId,
           clientSecret: Redacted.value(githubClientSecret),
-        },
-        google: {
-          clientId: googleClientId,
-          clientSecret: Redacted.value(googleClientSecret),
         },
       },
     );
@@ -79,24 +69,34 @@ class AppConfig extends Context.Service<AppConfig, AppConfigShape>()(
 }
 
 interface AppConfigEnv {
-  TOKENMAXXING_ENV?: string;
+  adminEmails?: string;
+  NIGHTMAXXING_ENV?: string;
 }
 
 interface AppConfigSecrets {
   github: GitHubOAuthConfig;
-  google: GoogleOAuthConfig;
 }
 
 function makeAppConfig(env: AppConfigEnv, secrets: AppConfigSecrets): AppConfigShape {
   const urls = resolveRuntimeUrls(env);
 
   return {
+    adminEmails: parseAdminEmails(env.adminEmails),
     apiWorkerName,
     corsOrigins: corsOriginsFor(urls),
     productName,
     urls,
     ...secrets,
   };
+}
+
+function parseAdminEmails(value: string | undefined): readonly string[] {
+  return value === undefined
+    ? []
+    : value
+        .split(",")
+        .map((email) => email.trim().toLowerCase())
+        .filter((email) => email.length > 0);
 }
 
 function corsOriginsFor(urls: RuntimeUrls): string[] {
@@ -110,12 +110,12 @@ function corsOriginsFor(urls: RuntimeUrls): string[] {
 }
 
 function resolveRuntimeUrls(env: AppConfigEnv): RuntimeUrls {
-  const sandbox: TokenmaxxingSandbox =
-    env.TOKENMAXXING_ENV === "development" ? "development" : "production";
+  const sandbox: NightmaxxingSandbox =
+    env.NIGHTMAXXING_ENV === "development" ? "development" : "production";
 
   return runtimeUrlTable[sandbox];
 }
 
 export { AppConfig };
 
-export type { AppConfigShape, GitHubOAuthConfig, GoogleOAuthConfig };
+export type { AppConfigShape, GitHubOAuthConfig };

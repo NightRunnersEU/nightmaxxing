@@ -100,7 +100,7 @@ describe("profile favicon route", () => {
     await handler(routeContext("pondorasti", "?v=two"));
 
     expect(loadIdentity).toHaveBeenCalledOnce();
-    expect(cache.keys()).toEqual(["https://tokenmaxxing.sh/favicon/pondorasti.svg?v=10"]);
+    expect(cache.keys()).toEqual(["https://maxxing.nrght.eu/favicon/pondorasti.svg?v=10"]);
   });
 
   it("returns not found for an unknown profile", async () => {
@@ -116,7 +116,7 @@ describe("profile favicon route", () => {
 function routeContext(login: string, search = "") {
   return {
     params: { login },
-    request: new Request(`https://tokenmaxxing.sh/favicon/${login}.svg${search}`),
+    request: new Request(`https://maxxing.nrght.eu/favicon/${login}.svg${search}`),
   };
 }
 
