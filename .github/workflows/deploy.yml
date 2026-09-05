@@ -24,7 +24,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Deploy
-        run: bunx alchemy deploy --stage prod --yes
+        run: bun --preload ./scripts/cloudflare-diagnostics.ts ./node_modules/alchemy/bin/alchemy.ts deploy --stage prod --yes
         env:
           ALCHEMY_STATE: cloudflare
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
