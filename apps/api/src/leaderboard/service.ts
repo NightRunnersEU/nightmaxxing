@@ -24,6 +24,7 @@ interface LeaderboardServiceShape {
   list(
     metric: typeof LeaderboardMetric.Type,
     window: typeof LeaderboardWindow.Type,
+    source?: string,
   ): Effect.Effect<(typeof LeaderboardEntry.Type)[]>;
 }
 
@@ -33,6 +34,8 @@ interface LeaderboardRepositoryShape {
     metric: typeof LeaderboardMetric.Type;
     /** Inclusive YYYY-MM-DD lower bound; null = all time. */
     since: string | null;
+    /** Only this agent's usage counts; omitted = every agent. */
+    source?: string | undefined;
     /** Inclusive YYYY-MM-DD upper bound. */
     until: string;
   }): Effect.Effect<(typeof LeaderboardEntry.Type)[], DatabaseError>;
@@ -51,13 +54,14 @@ const makeLeaderboardService = Effect.fn("makeLeaderboardService")(function* () 
   const repository = yield* LeaderboardRepository;
 
   return LeaderboardService.of({
-    list: Effect.fn("LeaderboardService.list")(function* (metric, window) {
+    list: Effect.fn("LeaderboardService.list")(function* (metric, window, source) {
       const now = new Date();
       return yield* repository
         .list({
           limit: LEADERBOARD_LIMIT,
           metric,
           since: leaderboardWindowStart(window, now),
+          source,
           until: latestUsageDateKey(now),
         })
         .pipe(Effect.orDie);

@@ -1,6 +1,7 @@
 export * from "./api";
 export * from "./date-key";
 export * from "./errors";
+export * from "./insights";
 export * from "./middleware";
 export * from "./model-path";
 export * from "./reserved-logins";

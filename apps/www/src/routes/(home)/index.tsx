@@ -24,8 +24,12 @@ import { leaderboardQueryOptions } from "../../lib/queries";
 import { searchParam } from "../../lib/search";
 import { pageHead } from "../../lib/seo";
 
+/** Every agent, or one agent's `source` tag (Nightmaxxing's agent filter). */
+const LeaderboardAgent = Schema.Literals(["all", ...SUPPORTED_AGENTS.map((agent) => agent.source)]);
+
 const leaderboardSearchSchema = Schema.toStandardSchemaV1(
   Schema.Struct({
+    agent: searchParam(LeaderboardAgent, "all"),
     metric: searchParam(LeaderboardMetric, DEFAULT_LEADERBOARD_METRIC),
     window: searchParam(LeaderboardWindow, DEFAULT_LEADERBOARD_WINDOW),
   }),
@@ -34,6 +38,7 @@ const leaderboardSearchSchema = Schema.toStandardSchemaV1(
 type LeaderboardSearch = typeof leaderboardSearchSchema.Type;
 
 const DEFAULT_LEADERBOARD_SEARCH = {
+  agent: "all",
   metric: DEFAULT_LEADERBOARD_METRIC,
   window: DEFAULT_LEADERBOARD_WINDOW,
 } as const satisfies LeaderboardSearch;
@@ -41,6 +46,7 @@ const DEFAULT_LEADERBOARD_SEARCH = {
 const WINDOW_OPTIONS = [
   { label: "7 days", value: "7d" },
   { label: "30 days", value: "30d" },
+  { label: "This month", value: "month" },
   { label: "All time", value: "all" },
 ] as const satisfies readonly SegmentedOption<typeof LeaderboardWindow.Type>[];
 
@@ -94,7 +100,9 @@ const Route = createFileRoute("/(home)/")({
   },
   loaderDeps: ({ search }) => search,
   loader: async ({ context, deps }) => {
-    await context.queryClient.ensureQueryData(leaderboardQueryOptions(deps.metric, deps.window));
+    await context.queryClient.ensureQueryData(
+      leaderboardQueryOptions(deps.metric, deps.window, agentSource(deps.agent)),
+    );
   },
   head: () => ({
     ...pageHead({ path: "/" }),
@@ -113,9 +121,9 @@ const Route = createFileRoute("/(home)/")({
 });
 
 function LeaderboardPage() {
-  const { metric, window } = Route.useSearch();
+  const { agent, metric, window } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { data } = useSuspenseQuery(leaderboardQueryOptions(metric, window));
+  const { data } = useSuspenseQuery(leaderboardQueryOptions(metric, window, agentSource(agent)));
 
   return (
     <>
@@ -134,6 +142,15 @@ function LeaderboardPage() {
               </h2>
             </div>
             <div className="flex flex-wrap gap-2">
+              <AgentFilter
+                onChange={(value) =>
+                  navigate({
+                    resetScroll: false,
+                    search: (prev) => ({ ...prev, agent: value }),
+                  })
+                }
+                value={agent}
+              />
               <SegmentedControl
                 label="Rank by"
                 onChange={(value) =>
@@ -160,7 +177,7 @@ function LeaderboardPage() {
           </div>
         </header>
 
-        <LeaderboardTable entries={data.entries} />
+        <LeaderboardTable entries={data.entries} filtered={agent !== "all"} />
       </section>
 
       <FaqSection />
@@ -168,14 +185,52 @@ function LeaderboardPage() {
   );
 }
 
-function LeaderboardTable({ entries }: { entries: readonly LeaderboardEntry[] }) {
+/** The API's `source` filter for an agent choice; undefined ranks every agent. */
+function agentSource(agent: typeof LeaderboardAgent.Type): string | undefined {
+  return agent === "all" ? undefined : agent;
+}
+
+/** A native select: twenty agents are too many for a segmented control. */
+function AgentFilter({
+  onChange,
+  value,
+}: {
+  onChange: (value: typeof LeaderboardAgent.Type) => void;
+  value: typeof LeaderboardAgent.Type;
+}) {
+  return (
+    <select
+      aria-label="Agent"
+      className="h-[30px] shrink-0 border border-border bg-background px-2 text-xs font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      onChange={(event) => onChange(event.currentTarget.value as typeof LeaderboardAgent.Type)}
+      value={value}
+    >
+      <option value="all">All agents</option>
+      {SUPPORTED_AGENTS.map((agent) => (
+        <option key={agent.source} value={agent.source}>
+          {agent.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function LeaderboardTable({
+  entries,
+  filtered,
+}: {
+  entries: readonly LeaderboardEntry[];
+  filtered: boolean;
+}) {
   const [scrolled, setScrolled] = useState(false);
 
   if (entries.length === 0) {
     return (
       <div className="border-y border-border">
         <p className="p-6 text-sm text-muted-foreground">
-          Nobody on the board yet — be the first to sync.
+          {filtered
+            ? "Nobody has used this agent in this window yet."
+            : "Nobody on the board yet — be the first to sync."}
         </p>
       </div>
     );

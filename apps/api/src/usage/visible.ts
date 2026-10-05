@@ -11,14 +11,17 @@ import type { SQLiteSelect } from "drizzle-orm/sqlite-core";
 interface VisibleUsageOptions {
   /** Inclusive YYYY-MM-DD lower bound; null/undefined = all time. */
   since?: string | null | undefined;
+  /** Only this agent's rows (a `source` tag); null/undefined = every agent. */
+  source?: string | null | undefined;
   /** Inclusive YYYY-MM-DD upper bound: the ingest ceiling, so future-dated rows never count. */
   until: string;
 }
 
-function visibleUsageFilter({ since, until }: VisibleUsageOptions): SQL | undefined {
+function visibleUsageFilter({ since, source, until }: VisibleUsageOptions): SQL | undefined {
   return and(
     isNull(users.shadowBannedAt),
     since === null || since === undefined ? undefined : gte(usageDays.date, since),
+    source === null || source === undefined ? undefined : eq(usageDays.source, source),
     lte(usageDays.date, until),
   );
 }

@@ -7,6 +7,7 @@ import { AuthService } from "../auth/service";
 import { CliLoginService } from "../clilogin/service";
 import { AppConfig } from "../config";
 import { makeApiHttpEffect } from "../http/layer";
+import { InsightsService } from "../insights/service";
 import { LeaderboardService } from "../leaderboard/service";
 import { OAuthProviders } from "../oauth/registry";
 import { ProfilesService } from "../profiles/service";
@@ -27,6 +28,7 @@ interface TestAppServices {
   admin?: Partial<AdminService["Service"]>;
   auth?: Partial<AuthService["Service"]>;
   cliLogin?: Partial<CliLoginService["Service"]>;
+  insights?: Partial<InsightsService["Service"]>;
   leaderboard?: Partial<LeaderboardService["Service"]>;
   profiles?: Partial<ProfilesService["Service"]>;
   /** Defaults to never limiting (see testing/rate-limiter for a counting fake). */
@@ -56,6 +58,7 @@ async function makeTestApp(services: TestAppServices = {}): Promise<TestApp> {
   const admin = stub<AdminService["Service"]>("AdminService", services.admin);
   const auth = stub<AuthService["Service"]>("AuthService", services.auth);
   const cliLogin = stub<CliLoginService["Service"]>("CliLoginService", services.cliLogin);
+  const insights = stub<InsightsService["Service"]>("InsightsService", services.insights);
   const leaderboard = stub<LeaderboardService["Service"]>(
     "LeaderboardService",
     services.leaderboard,
@@ -70,6 +73,7 @@ async function makeTestApp(services: TestAppServices = {}): Promise<TestApp> {
     Context.add(AppConfig, testConfig),
     Context.add(AuthService, auth),
     Context.add(CliLoginService, cliLogin),
+    Context.add(InsightsService, insights),
     Context.add(LeaderboardService, leaderboard),
     Context.add(OAuthProviders, stub<OAuthProviders["Service"]>("OAuthProviders")),
     Context.add(ProfilesService, profiles),

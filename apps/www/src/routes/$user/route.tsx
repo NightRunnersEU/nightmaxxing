@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { LinkSimple } from "@phosphor-icons/react/ssr";
+import { CalendarBlank, LinkSimple } from "@phosphor-icons/react/ssr";
 import { useSuspenseQuery, type QueryClient } from "@tanstack/react-query";
-import { createFileRoute, notFound, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound, redirect } from "@tanstack/react-router";
 import type { ProfileResponse } from "@nightmaxxing/api-contract";
 
 import { Heatmap } from "../../components/charts/heatmap";
@@ -10,7 +10,7 @@ import { StackedChartPanel } from "../../components/charts/stacked-bars";
 import { WeekdayBars } from "../../components/charts/weekday-bars";
 import { StatCard } from "../../components/stat-card";
 import { Avatar } from "../../components/ui/avatar";
-import { Button } from "../../components/ui/button";
+import { Button, buttonClassName } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Code } from "../../components/ui/code";
 import { useCopyToClipboard } from "../../hooks/use-copy-to-clipboard";
@@ -25,8 +25,10 @@ import {
   profileOgTitle,
   profileUrl,
 } from "../../lib/og";
+import { ProfileInsightsSections } from "./-components/profile-insights";
 import { deriveProfileCharts, type DailyRange, type DailyRow } from "./-lib/profile-charts";
 import { profileDailyQueryOptions, profileQueryOptions, queryKeys } from "../../lib/queries";
+import { currentRecapMonth } from "../../lib/recap";
 import { pageHead } from "../../lib/seo";
 
 type ProfileStats = (typeof ProfileResponse.Type)["stats"];
@@ -118,7 +120,17 @@ function ProfilePage() {
           <Avatar alt={`${owner.login} avatar`} priority size={56} src={owner.avatarUrl} />
           <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight">{owner.login}</h1>
         </div>
-        <ProfileShareButton url={profileUrl(profile)} />
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            className={buttonClassName({ size: "sm", variant: "outline" })}
+            params={{ month: currentRecapMonth(new Date()), user: owner.login }}
+            to="/$user/recap/$month"
+          >
+            <CalendarBlank className="size-4" />
+            Recap
+          </Link>
+          <ProfileShareButton url={profileUrl(profile)} />
+        </div>
       </header>
 
       {daily.days.length === 0 ? (
@@ -161,6 +173,7 @@ function ProfileDashboard({
   rows: readonly DailyRow[];
   stats: ProfileStats;
 }) {
+  const { user: login } = Route.useParams();
   const charts = useMemo(() => deriveProfileCharts(rows, range), [range, rows]);
   const dayCount = charts.spend.days.length;
 
@@ -235,6 +248,8 @@ function ProfileDashboard({
           />
         </div>
       </section>
+
+      <ProfileInsightsSections login={login} />
     </div>
   );
 }

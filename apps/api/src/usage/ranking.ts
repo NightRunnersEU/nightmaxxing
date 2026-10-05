@@ -4,7 +4,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 
 import type { LeaderboardMetric, LeaderboardWindow } from "@nightmaxxing/api-contract";
 
-import { trailingWindowStart } from "../date-keys";
+import { trailingWindowStart, utcDayKey } from "../date-keys";
 import { publicUserColumns } from "../public-user";
 import { usageAggregates, usageMetric } from "./aggregates";
 import { visibleUsage } from "./visible";
@@ -20,6 +20,8 @@ interface RankingOptions {
   metric: LeaderboardMetric;
   /** Inclusive YYYY-MM-DD lower bound; null = all time. */
   since: string | null;
+  /** Only this agent's usage counts; omitted = every agent. */
+  source?: string | null | undefined;
   /** Inclusive YYYY-MM-DD upper bound (the ingest ceiling). */
   until: string;
 }
@@ -28,16 +30,19 @@ const LEADERBOARD_WINDOW_DAYS = {
   "30d": 30,
   "7d": 7,
   all: null,
-} as const satisfies Record<LeaderboardWindow, number | null>;
+} as const satisfies Record<Exclude<LeaderboardWindow, "month">, number | null>;
 
 /** Inclusive lower bound for a leaderboard window; null = all time. */
 function leaderboardWindowStart(window: LeaderboardWindow, now: Date): string | null {
+  if (window === "month") {
+    return `${utcDayKey(now).slice(0, 7)}-01`;
+  }
   const days = LEADERBOARD_WINDOW_DAYS[window];
   return days === null ? null : trailingWindowStart(days, now);
 }
 
 /** Per-user visible totals with a unique 1-based rank (ties broken by user id). */
-function rankedUsers(db: DrizzleD1Database, { metric, since, until }: RankingOptions) {
+function rankedUsers(db: DrizzleD1Database, { metric, since, source, until }: RankingOptions) {
   return visibleUsage(
     db
       .select({
@@ -52,7 +57,7 @@ function rankedUsers(db: DrizzleD1Database, { metric, since, until }: RankingOpt
       })
       .from(usageDays)
       .$dynamic(),
-    { since, until },
+    { since, source, until },
   )
     .groupBy(usageDays.userId)
     .as("ranked_users");

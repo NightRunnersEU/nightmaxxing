@@ -12,6 +12,7 @@ import { sha256Hex } from "../auth/crypto";
 import { AuthService } from "../auth/service";
 import { CliLoginService } from "../clilogin/service";
 import { AppConfig, type AppConfigShape } from "../config";
+import { InsightsService } from "../insights/service";
 import { LeaderboardService } from "../leaderboard/service";
 import { OAuthProviders } from "../oauth/registry";
 import { latestUsageDateKey } from "../date-keys";
@@ -319,6 +320,8 @@ describe("API HTTP responses", () => {
     it.each([
       ["/leaderboard?metric=bogus", "Invalid query parameter `metric`."],
       ["/leaderboard?window=forever", "Invalid query parameter `window`."],
+      ["/leaderboard?source=Not%20An%20Agent", "Invalid query parameter `source`."],
+      ["/profiles/alex/insights?since=2026-13-01", "Invalid query parameter `since`."],
       ["/profiles/alex/daily?since=2026-02-30", "Invalid query parameter `since`."],
       ["/profiles/alex/daily?until=tomorrow", "Invalid query parameter `until`."],
     ])("answers GET %s with a 400 naming the field", async (path, message) => {
@@ -331,6 +334,65 @@ describe("API HTTP responses", () => {
         message,
       });
       expect(app.logs.entries).toEqual([]);
+    });
+
+    it("passes the month window and agent filter to the leaderboard and echoes them", async () => {
+      const calls: unknown[][] = [];
+      app = await makeTestApp({
+        leaderboard: {
+          list: (...args) => Effect.sync(() => void calls.push(args)).pipe(Effect.as([])),
+        },
+      });
+
+      const response = await app.fetch(
+        new Request("https://api.maxxing.nrght.eu/leaderboard?window=month&source=codex"),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        entries: [],
+        metric: "spend",
+        source: "codex",
+        window: "month",
+      });
+      expect(calls).toEqual([["spend", "month", "codex"]]);
+    });
+
+    it("serves profile insights for the requested range", async () => {
+      const queries: unknown[] = [];
+      const insights = {
+        agents: [],
+        longestStreakDays: 0,
+        peakDay: null,
+        range: { firstDate: "2026-09-01", lastDate: "2026-09-30" },
+        spendRank: null,
+        topModel: null,
+        totals: {
+          activeDays: 0,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          spendUsd: 0,
+          totalTokens: 0,
+        },
+      };
+      app = await makeTestApp({
+        insights: {
+          getProfileInsights: (login, query) =>
+            Effect.sync(() => void queries.push([login, query])).pipe(Effect.as(insights)),
+        },
+      });
+
+      const response = await app.fetch(
+        new Request(
+          "https://api.maxxing.nrght.eu/profiles/alex/insights?since=2026-09-01&until=2026-09-30",
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(insights);
+      expect(queries).toEqual([["alex", { since: "2026-09-01", until: "2026-09-30" }]]);
     });
 
     it.each([
@@ -728,6 +790,7 @@ function makeHarness() {
         AuthService.of({ ...stub(AuthService), resolveSession: () => Effect.succeedNone }),
       ),
       Layer.succeed(CliLoginService, stub(CliLoginService)),
+      Layer.succeed(InsightsService, stub(InsightsService)),
       Layer.succeed(LeaderboardService, LeaderboardService.of({ list: () => Effect.succeed([]) })),
       Layer.succeed(OAuthProviders, stub(OAuthProviders)),
       Layer.succeed(ProfilesService, profiles),

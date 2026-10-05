@@ -18,6 +18,7 @@ import {
   TooManyRequests,
   UserNotFound,
 } from "./errors";
+import { InsightsGroup } from "./insights";
 import { AllowCliToken, Authorization, CliAuth, ErrorBoundary } from "./middleware";
 import {
   AdminUsersResponse,
@@ -33,6 +34,7 @@ import {
   IngestUsageInput,
   LeaderboardMetric,
   LeaderboardResponse,
+  LeaderboardSource,
   LeaderboardWindow,
   ListAccountsResponse,
   ListDevicesResponse,
@@ -177,6 +179,8 @@ class LeaderboardGroup extends HttpApiGroup.make("leaderboard").add(
   HttpApiEndpoint.get("list", "/leaderboard", {
     query: {
       metric: Schema.optional(LeaderboardMetric),
+      /** Only usage from this agent (`source` tag, e.g. "codex"). */
+      source: Schema.optional(LeaderboardSource),
       window: Schema.optional(LeaderboardWindow),
     },
     success: LeaderboardResponse,
@@ -265,6 +269,7 @@ class NightmaxxingApi extends HttpApi.make("nightmaxxing")
   .add(LeaderboardGroup)
   .add(StatsGroup)
   .add(ProfilesGroup)
+  .add(InsightsGroup)
   .add(AdminGroup)
   .middleware(ErrorBoundary) {}
 

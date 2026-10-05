@@ -29,6 +29,9 @@ import { Route as LoginCliRouteImport } from './routes/login_.cli'
 import { Route as OgCardIndexRouteImport } from './routes/og-card/index'
 import { Route as OgCardLoginRouteImport } from './routes/og-card/$login'
 import { Route as OgChar123loginChar125DotpngRouteImport } from './routes/og/{$login}[.]png'
+import { Route as UserRecapMonthRouteImport } from './routes/$user_/recap.$month'
+import { Route as OgCardRecapLoginMonthRouteImport } from './routes/og-card/recap/$login.$month'
+import { Route as OgRecapLoginChar123monthChar125DotpngRouteImport } from './routes/og/recap/$login.{$month}[.]png'
 
 const UserRouteRoute = UserRouteRouteImport.update({
   id: '/$user',
@@ -131,6 +134,22 @@ const OgChar123loginChar125DotpngRoute =
     path: '/og/{$login}.png',
     getParentRoute: () => rootRouteImport,
   } as any)
+const UserRecapMonthRoute = UserRecapMonthRouteImport.update({
+  id: '/$user_/recap/$month',
+  path: '/$user/recap/$month',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OgCardRecapLoginMonthRoute = OgCardRecapLoginMonthRouteImport.update({
+  id: '/og-card/recap/$login/$month',
+  path: '/og-card/recap/$login/$month',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OgRecapLoginChar123monthChar125DotpngRoute =
+  OgRecapLoginChar123monthChar125DotpngRouteImport.update({
+    id: '/og/recap/$login/{$month}.png',
+    path: '/og/recap/$login/{$month}.png',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/$user': typeof UserRouteRoute
@@ -152,6 +171,9 @@ export interface FileRoutesByFullPath {
   '/og-card/$login': typeof OgCardLoginRoute
   '/og/{$login}.png': typeof OgChar123loginChar125DotpngRoute
   '/og-card/': typeof OgCardIndexRoute
+  '/$user/recap/$month': typeof UserRecapMonthRoute
+  '/og-card/recap/$login/$month': typeof OgCardRecapLoginMonthRoute
+  '/og/recap/$login/{$month}.png': typeof OgRecapLoginChar123monthChar125DotpngRoute
 }
 export interface FileRoutesByTo {
   '/$user': typeof UserRouteRoute
@@ -173,6 +195,9 @@ export interface FileRoutesByTo {
   '/og-card/$login': typeof OgCardLoginRoute
   '/og/{$login}.png': typeof OgChar123loginChar125DotpngRoute
   '/og-card': typeof OgCardIndexRoute
+  '/$user/recap/$month': typeof UserRecapMonthRoute
+  '/og-card/recap/$login/$month': typeof OgCardRecapLoginMonthRoute
+  '/og/recap/$login/{$month}.png': typeof OgRecapLoginChar123monthChar125DotpngRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -196,6 +221,9 @@ export interface FileRoutesById {
   '/og/{$login}.png': typeof OgChar123loginChar125DotpngRoute
   '/(home)/': typeof homeIndexRoute
   '/og-card/': typeof OgCardIndexRoute
+  '/$user_/recap/$month': typeof UserRecapMonthRoute
+  '/og-card/recap/$login/$month': typeof OgCardRecapLoginMonthRoute
+  '/og/recap/$login/{$month}.png': typeof OgRecapLoginChar123monthChar125DotpngRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -219,6 +247,9 @@ export interface FileRouteTypes {
     | '/og-card/$login'
     | '/og/{$login}.png'
     | '/og-card/'
+    | '/$user/recap/$month'
+    | '/og-card/recap/$login/$month'
+    | '/og/recap/$login/{$month}.png'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$user'
@@ -240,6 +271,9 @@ export interface FileRouteTypes {
     | '/og-card/$login'
     | '/og/{$login}.png'
     | '/og-card'
+    | '/$user/recap/$month'
+    | '/og-card/recap/$login/$month'
+    | '/og/recap/$login/{$month}.png'
   id:
     | '__root__'
     | '/$user'
@@ -262,6 +296,9 @@ export interface FileRouteTypes {
     | '/og/{$login}.png'
     | '/(home)/'
     | '/og-card/'
+    | '/$user_/recap/$month'
+    | '/og-card/recap/$login/$month'
+    | '/og/recap/$login/{$month}.png'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -283,6 +320,9 @@ export interface RootRouteChildren {
   OgChar123loginChar125DotpngRoute: typeof OgChar123loginChar125DotpngRoute
   homeIndexRoute: typeof homeIndexRoute
   OgCardIndexRoute: typeof OgCardIndexRoute
+  UserRecapMonthRoute: typeof UserRecapMonthRoute
+  OgCardRecapLoginMonthRoute: typeof OgCardRecapLoginMonthRoute
+  OgRecapLoginChar123monthChar125DotpngRoute: typeof OgRecapLoginChar123monthChar125DotpngRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -427,6 +467,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OgChar123loginChar125DotpngRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$user_/recap/$month': {
+      id: '/$user_/recap/$month'
+      path: '/$user/recap/$month'
+      fullPath: '/$user/recap/$month'
+      preLoaderRoute: typeof UserRecapMonthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/og-card/recap/$login/$month': {
+      id: '/og-card/recap/$login/$month'
+      path: '/og-card/recap/$login/$month'
+      fullPath: '/og-card/recap/$login/$month'
+      preLoaderRoute: typeof OgCardRecapLoginMonthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/og/recap/$login/{$month}.png': {
+      id: '/og/recap/$login/{$month}.png'
+      path: '/og/recap/$login/{$month}.png'
+      fullPath: '/og/recap/$login/{$month}.png'
+      preLoaderRoute: typeof OgRecapLoginChar123monthChar125DotpngRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -462,6 +523,10 @@ const rootRouteChildren: RootRouteChildren = {
   OgChar123loginChar125DotpngRoute: OgChar123loginChar125DotpngRoute,
   homeIndexRoute: homeIndexRoute,
   OgCardIndexRoute: OgCardIndexRoute,
+  UserRecapMonthRoute: UserRecapMonthRoute,
+  OgCardRecapLoginMonthRoute: OgCardRecapLoginMonthRoute,
+  OgRecapLoginChar123monthChar125DotpngRoute:
+    OgRecapLoginChar123monthChar125DotpngRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

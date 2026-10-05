@@ -17,6 +17,12 @@ describe("leaderboardWindowStart", () => {
     expect(leaderboardWindowStart("30d", now)).toBe("2026-05-14");
   });
 
+  it("starts the month window on the first of the current UTC month", () => {
+    expect(leaderboardWindowStart("month", now)).toBe("2026-06-01");
+    // UTC decides the month: late on Jan 31 in the Americas is already Feb 1 UTC.
+    expect(leaderboardWindowStart("month", new Date("2026-02-01T01:00:00Z"))).toBe("2026-02-01");
+  });
+
   it("produces zero-padded keys that compare lexicographically", () => {
     const start = leaderboardWindowStart("30d", new Date("2026-01-05T03:00:00Z"));
     expect(start).toBe("2025-12-07");

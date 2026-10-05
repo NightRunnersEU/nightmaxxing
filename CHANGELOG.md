@@ -5,6 +5,15 @@ All notable changes to nightmaxxing are documented here. Versions are anchored t
 
 ## Unreleased
 
+### Added
+
+- Profiles show an Agents breakdown (all-time spend, tokens and active days per coding agent) and
+  a Token mix with the cache hit rate.
+- Monthly recaps at `/<login>/recap/<YYYY-MM>`: the month's spend, tokens, rank, top model and
+  agent, peak day, streak and cache hit rate, with a shareable card. Profiles link to the current
+  month's recap.
+- The leaderboard ranks "This month" and can be limited to one agent.
+
 ## 0.1.1 - 2026-10-05
 
 Brings Nightmaxxing up to date with upstream tokenmaxxing 0.7.6. The upstream 0.7.0–0.7.6

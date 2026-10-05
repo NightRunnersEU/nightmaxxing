@@ -34,6 +34,7 @@ import { sessionTokenFrom } from "../auth/cookies";
 import { AuthService } from "../auth/service";
 import { CliLoginService } from "../clilogin/service";
 import { AppConfig, type Deployment, deploymentForHost, deployments } from "../config";
+import { InsightsService } from "../insights/service";
 import { LeaderboardService } from "../leaderboard/service";
 import type { OAuthProviders } from "../oauth/registry";
 import { ProfilesService } from "../profiles/service";
@@ -282,9 +283,9 @@ const leaderboardHandlers = HttpApiBuilder.group(NightmaxxingApi, "leaderboard",
       const metric = query.metric ?? DEFAULT_LEADERBOARD_METRIC;
       const window = query.window ?? DEFAULT_LEADERBOARD_WINDOW;
 
-      const entries = yield* leaderboard.list(metric, window);
+      const entries = yield* leaderboard.list(metric, window, query.source);
       yield* cacheControl(PUBLIC_READ_CACHE_CONTROL);
-      return { entries, metric, window };
+      return { entries, metric, source: query.source, window };
     }),
   ),
 );
@@ -338,6 +339,21 @@ const profilesHandlers = HttpApiBuilder.group(NightmaxxingApi, "profiles", (hand
         return daily;
       }),
     ),
+);
+
+const insightsHandlers = HttpApiBuilder.group(NightmaxxingApi, "insights", (handlers) =>
+  handlers.handle("profile", ({ params, query }) =>
+    Effect.gen(function* () {
+      const insights = yield* InsightsService;
+      const result = yield* insights.getProfileInsights(
+        params.login,
+        { since: query.since, until: query.until },
+        yield* viewerUserId,
+      );
+      yield* cacheControl(yield* viewerCacheControl());
+      return result;
+    }),
+  ),
 );
 
 /**
@@ -416,6 +432,7 @@ const HandlersLive = Layer.mergeAll(
   leaderboardHandlers,
   statsHandlers,
   profilesHandlers,
+  insightsHandlers,
 );
 
 /**
@@ -705,6 +722,7 @@ type ApiServices =
   | AppConfig
   | AuthService
   | CliLoginService
+  | InsightsService
   | LeaderboardService
   | OAuthProviders
   | ProfilesService
