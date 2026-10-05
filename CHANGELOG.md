@@ -5,6 +5,290 @@ All notable changes to nightmaxxing are documented here. Versions are anchored t
 
 ## Unreleased
 
+### Changed
+
+- Synced with upstream tokenmaxxing through CLI 0.7.6 (see the upstream entries below).
+
+## 0.7.6 - 2026-10-02
+
+### Fixed
+
+- Scheduled syncs work again for Node installed through asdf or mise when no global Node version
+  is set (only a project's `.tool-versions`, `mise.toml` or `.node-version`). Since 0.7.0 the
+  service wrapper's `PATH` swapped a version's install directory for the manager's shims, which
+  pick a version from the job's working directory (`/` under launchd, `~` under systemd) and found
+  none: one macOS device failed every run since its 0.7.0 migration with
+  `ccusage command failed: nodejs 26.3.0`. asdf, mise and nodenv entries on the wrapper's `PATH`
+  now lead to the newest installed Node's own `bin` directory, ahead of the shims, the same from
+  any shell (with or without `asdf exec`/`nodenv exec`, mise activate or shims mode). The service
+  template moves to 9, so each service's next run repairs its wrapper once; a wrapper whose `PATH`
+  is unchanged is not rewritten. Volta, nvm and fnm are unchanged.
+- A failed ccusage run's reason is now the stderr line that says why rather than the last one:
+  dyld's `Library not loaded: …` instead of the tail of its `Reason: tried: …`, asdf's
+  `No preset version installed for command node` or mise's `No version is set for shim: node`
+  instead of the installed versions listed after it, and npm's error instead of where it wrote its
+  log. The source's stored stderr keeps that line even when it came before the last five, and long
+  lines are cut at the end rather than the start.
+
+## 0.7.5 - 2026-10-01
+
+### Fixed
+
+- Syncs no longer fail on every run when `bun` is on `PATH` but takes the `x` of `bun x` for a
+  script name: it prints `error: Script not found "x"` (or `missing script "x"` before Bun 1.0.19)
+  and ccusage never runs. One Linux device's every run failed with
+  `codex: ccusage command failed: error: Script not found "x"`, and npx was never tried because
+  bun had been found and started. ccusage now falls back to npx then too. When there is no npx
+  either, the reason says so, e.g. `bun does not support \`bun x\` (error: Script not found "x")
+  and npx is not on PATH; update Bun or install Node.js`. A ccusage that ran and failed is still
+  reported as such.
+
+## 0.7.4 - 2026-10-01
+
+### Fixed
+
+- Windows: `service uninstall` no longer leaves the service runners dir (about 78 MB) behind when
+  Windows will not let it be renamed aside either, say because antivirus keeps the running runner
+  open for longer than the uninstall's retries. The same hidden cleanup that deletes a renamed-aside
+  dir now deletes `service-runners` where it is, once whatever holds it lets go. Before, it was
+  left for the next install or uninstall, which after an uninstall might never come. A
+  `service install` while that cleanup is still pending cancels it first, so it never deletes the
+  new runner.
+- Windows with Bun installed through npm (`npm i -g bun`, or another tool that puts a `bun.cmd`
+  shim on `PATH` instead of `bun.exe`): syncs work again. Since 0.7.0, every agent failed with
+  "ccusage command failed" and no further detail: Bun 1.4, which the CLI is built with, refuses
+  to start the shim with the `^` in ccusage's version range, and npx was never tried because bun
+  had been found. The CLI now runs `bun.exe` by its path wherever it is on `PATH`, and a
+  `bun.cmd`/`bun.bat` shim through `cmd.exe` the way it runs `npx.cmd`.
+- When bun is there but cannot be started at all, ccusage falls back to npx, as it already did
+  when bun was missing. A ccusage that ran and failed is still reported as such.
+- When ccusage fails without printing an error, the reason now says which runner ran it and how it
+  ended, e.g. `bun.cmd could not be started (EINVAL)` or `npx.cmd exited with code 1`, in
+  `sync`, `service status`, the service log and the device's reported error.
+
+## 0.7.3 - 2026-10-01
+
+### Added
+
+- Added Oh My Pi (OMP) as a supported source (`--sources omp`). It runs ccusage's Pi parser on
+  OMP's own sessions: `~/.omp/agent/sessions` plus every named profile, following `PI_CONFIG_DIR`
+  and `$XDG_DATA_HOME/omp` like OMP. OMP ignores `PI_AGENT_DIR` and a ccusage.json `piPath`, and
+  Pi skips any `PI_AGENT_DIR` entry that points at OMP's sessions, so neither counts the other's
+  sessions and the `PI_AGENT_DIR=~/.omp/agent/sessions` workaround can stay set. Thanks
+  @theoparis (#67).
+- Scheduled syncs now keep `PI_CONFIG_DIR` and `XDG_DATA_HOME`, so they find OMP's (and
+  OpenCode's) data where a foreground sync does.
+
+### Fixed
+
+- A scheduled sync in which every agent failed now reports why each one failed (the reason and the
+  last line of ccusage's error output, grouped by reason as on the console) in `service status`,
+  the service log and the device's reported error, instead of only "ccusage source collection
+  failed". Home directories in that output are replaced with `<home>`. `service doctor` shows the
+  summary line.
+- When neither bun nor npx can be found, the error names the agents and, on Windows, the `npx.cmd`
+  shim it looked for.
+- Windows with Node from fnm: a service repair that finds the shell's fnm link gone (fnm links
+  each shell's Node through `%LOCALAPPDATA%\fnm_multishells`) keeps Node on the service's `PATH`
+  through fnm's default alias in `%APPDATA%\fnm`. It used to drop it, and every scheduled sync then
+  failed to run ccusage. This hits services moving off a 0.6.0 install, whose `PATH` named the
+  link of the shell they were installed from.
+- Model names that are local file paths (llama.cpp, LM Studio, MLX and other local runners report
+  the file they loaded, e.g. `/home/<you>/models/gemma.gguf`) are reduced to the file or directory
+  name before upload, so your home directory no longer leaves the device. A Hugging Face cache
+  path keeps its file name, or `<org>/<repo>` when it names only the snapshot. Provider ids with
+  slashes (`openai/gpt-5`, `~anthropic/…`) are unchanged.
+- Scheduled syncs now keep the custom data directories of OpenCode (`OPENCODE_DATA_DIR`), Gemini
+  CLI (`GEMINI_DATA_DIR`), GitHub Copilot CLI (`COPILOT_HOME`, `COPILOT_OTEL_FILE_EXPORTER_PATH`)
+  and Pi (`PI_AGENT_DIR`), and Claude Code's projects under `$XDG_CONFIG_HOME/claude` when
+  `CLAUDE_CONFIG_DIR` is unset. The service didn't capture these variables, so a foreground `sync`
+  honoured them while scheduled runs read the default locations. `service doctor` now warns when
+  they drift; run `nightmaxxing service repair` once if you set any of them.
+- Windows: `service uninstall` run from the service runner exe failed now and then with "failed to
+  uninstall nightmaxxing service" after the scheduled task was already gone, and left the runner
+  behind. Windows refuses to delete or rename a dir for a moment while antivirus, the indexer or a
+  process that just exited still has a file in it open. Service file deletes and renames now retry
+  for about 2 s. A runners dir that still cannot be removed no longer fails the uninstall: it is
+  listed in `pendingRemoval` with a warning, and the next `service install` or `service uninstall`
+  removes it.
+
+### Server
+
+- The API accepts `omp` on `/usage/ingest` and `/usage/sync` and stores its models without the
+  `[pi]` label ccusage's Pi parser adds. The site labels it "Oh My Pi" on the stats page, home
+  page, FAQ, privacy policy, and llms.txt.
+- The API also reduces model names that are local file paths to their file name at ingest, from both stored usage rows and stored raw reports, so
+  uploads from older CLIs never store or show them on profiles, stats or the leaderboard. Paths
+  that reduce to the same name on the same day are merged.
+- Chart tooltips on the site stay inside the chart and the screen on phones (they were clipped
+  and could scroll the page sideways), and a tap now keeps a tooltip open until you tap elsewhere
+  or scroll.
+
+## 0.7.2 - 2026-10-01
+
+### Fixed
+
+- Windows without Bun: syncs failed with "unexpected CLI failure" in 0.7.0 and 0.7.1, and scheduled
+  runs ended right after reporting that they had started, with nothing uploaded, logged or
+  reported. Without `bun`, ccusage runs through npm's `npx.cmd`, and the Bun release those
+  versions were built with refuses to start a `.cmd` file without a shell. `npx.cmd` now runs
+  through `cmd.exe`. An affected service picks this up through its next auto-update and resumes
+  syncing, and moves off the old task (and its console window) on the run after.
+- An agent whose ccusage command cannot be started now fails on its own, with the reason, and the
+  other agents still sync. Any other unexpected error in a scheduled run is logged, reported and
+  repaired like a failed sync. Before, both ended the run right after its started check-in with
+  nothing recorded.
+
+## 0.7.1 - 2026-09-29
+
+### Fixed
+
+- Linux: the deferred service repair (after an update, or when the timer is inactive) runs when the
+  config dir contains a quote, backslash or `$`. systemd re-reads its pending unit on any
+  `daemon-reload` and could not load that path, so the repair never ran and stayed "scheduled".
+  It also starts about 2 seconds after the scheduled run instead of up to a minute later.
+- `service install` and `service repair` refuse a config dir that contains a tab, newline or other
+  control character, with an error that says so. Before, a Linux install there failed with a
+  generic error, and moving an existing install to such a dir reported success but left a unit
+  that never ran.
+- Windows: a sync that starts while another is still running (the service's wrapper run by hand,
+  or a run left going after the task was ended) no longer exits 0 without running or logging
+  anything. `cmd` holds `service.log` for a whole run, so the second run couldn't open it; it now
+  logs to `service-overlap-1.log` (up to `-4`) instead, and a log held by another process is no
+  longer half-rotated. Task Scheduler itself never overlaps runs. The service rewrites its
+  wrapper once on its next run.
+- A scheduled run that finds another run holding the lock logs a `"status":"skipped"`,
+  `"reason":"locked"` line instead of printing nothing.
+- On Windows, `nightmaxxing service uninstall` run by the service runner exe itself (the
+  `nightmaxxing.exe` under `service-runners\`) failed with "Failed removing service files",
+  because Windows cannot delete a running exe. It now removes the task and every other service
+  file, moves the running runner aside, and a hidden cleanup deletes it once it exits.
+  `service status` and `service doctor` then report the service as not installed.
+- `nightmaxxing service install` or `service repair` run by the service runner exe keeps that
+  runner instead of downloading it again. Without the npm registry it failed with "missing
+  service runner package".
+
+## 0.7.0 - 2026-09-29
+
+### Upgrading
+
+- From 0.6.0: the background service updates itself to 0.7.0 and migrates its files on the next
+  run; nothing to do. On macOS this can show the “nightmaxxing.sh can run in the background”
+  notice one last time. Later updates leave the service files alone.
+- `nightmaxxing login` now uses a device-code flow. Existing logins keep working, and older CLIs
+  keep the previous flow until 2027-11-01.
+- From 0.7.0-alpha.2 or earlier:
+  - On Windows, reinstall an `npm install -g --prefix <dir>` install once by hand
+    (`npm install -g --prefix <dir> @nightrunners/nightmaxxing@latest`); those versions' `upgrade`
+    installs into npm's default prefix instead.
+  - Upgrade the global CLI before running `nightmaxxing service repair`. A repair from an older
+    global CLI can briefly move the service back to that version; it updates itself again on the
+    next run.
+
+### Added
+
+- New sources: Grok Build CLI, Antigravity, ZCode, Amp, Qwen Code, Kimi CLI, Kilo Code, Goose,
+  Droid, Codebuff and OpenClaw (`--sources grok,antigravity,zcode,amp,qwen,kimi,kilo,goose,`
+  `droid,codebuff,openclaw`), each read through its focused ccusage subcommand. Scheduled syncs
+  keep their custom data directories (`GROK_HOME`, `ANTIGRAVITY_DATA_DIR`, `ZCODE_HOME`,
+  `AMP_DATA_DIR`, `QWEN_DATA_DIR`, `KIMI_DATA_DIR`, `KILO_DATA_DIR`, `GOOSE_PATH_ROOT`,
+  `DROID_SESSIONS_DIR`, `CODEBUFF_DATA_DIR`, `OPENCLAW_DIR`).
+- `NIGHTMAXXING_NPM_REGISTRY` points version checks and service-runner downloads at another npm
+  registry (a mirror). A service install captures it for scheduled syncs.
+- `NIGHTMAXXING_SYNC_WINDOW_DAYS` (1–90) overrides how many past days scheduled syncs re-send.
+
+### Changed
+
+- Requires ccusage 20.0.22 or newer, which counts `claude-fable-5-1` usage again and has every
+  supported adapter.
+- Scheduled syncs re-send the last 21 days every 6 hours (and on the first run after upgrading),
+  so days that ccusage later re-counts are corrected on the leaderboard. This also recovers
+  September usage that ccusage 20.0.20 undercounted.
+- Scheduled syncs skip sources whose logs haven't changed and only rebuild session counts on the
+  6-hourly reconcile, cutting background CPU for large Codex logs. `service run --force` runs every
+  source. Thanks @NubsCarson for the report (#69).
+- `nightmaxxing upgrade` installs the exact version the registry reports (for example
+  `npm install -g @nightrunners/nightmaxxing@0.7.0 --prefer-online`), never a dist-tag, and checks
+  `nightmaxxing --version` afterwards. It never downgrades: prerelease installs follow their
+  channel (e.g. `alpha`) and move to `latest` only when it is newer. When the registry can't be
+  reached it stops instead of guessing. Failures show the command and the package manager's own
+  output, in `--json` too (`command`, `output`, `expectedVersion`, `installedVersion`), and
+  `upgrade --json` adds `channel`/`channelVersion`.
+- `nightmaxxing service doctor` exits 1 when any check is `WARN` or `FAIL` and 0 when all are `OK`
+  or `INFO`. A new `FAIL` level marks what stops scheduled syncs, and `--json` adds `health` and a
+  `fix` per problem. Every line now says what's good, or what's wrong and the one command that
+  fixes it, and `service status` uses the same wording.
+- `service repair` and `service install --refresh` refuse to move a service backwards (a newer
+  runner or template than the CLI's); status and doctor say to upgrade the CLI instead.
+- `nightmaxxing` exits with 128 + the signal number when a signal stops it (143 for `SIGTERM`),
+  and handles `SIGHUP` too.
+
+### Fixed
+
+- The background service:
+  - On macOS, updates no longer show the “nightmaxxing.sh can run in the background” notice again. Refreshes
+    and repairs leave unchanged files alone and only reload launchd or systemd when the definition
+    changed, and the script keeps the same `PATH` from any terminal (per-shell fnm directories
+    resolve to fnm's default alias; temporary, agent-session and app-bundle directories are left
+    out).
+  - On Windows, the scheduled sync no longer opens a console window or steals focus: it runs
+    through a hidden `wscript` launcher, and config paths with spaces, `&`, `'`, parentheses,
+    `%` or non-ASCII characters work. Refreshes and repairs no longer re-register an unchanged
+    task (which restarted its schedule), including from a shell whose config dir path differs only
+    in case. Thanks @sybrengg (#38) and @tanqyry (#72); fixes #57.
+  - On Linux, a config directory containing `%`, a quote or a backslash no longer gives a unit
+    systemd refuses to load. Run `nightmaxxing service repair` to rewrite an affected unit.
+  - A hanging ccusage no longer blocks automatic sync. ccusage runs in its own process group and a
+    timeout stops the whole group; after one timeout a run skips the remaining sources, and no
+    source starts more than 10 minutes into a run. The systemd unit gets `TimeoutStartSec=30min`
+    as a backstop.
+  - A run killed by `SIGKILL`, the OOM killer or a power loss no longer blocks syncing for 2 hours:
+    the next run takes over a lock whose process is gone.
+  - A scheduled run where every agent's ccusage failed exits non-zero, and the log includes the end
+    of ccusage's stderr (for example `env: node: No such file or directory`).
+  - A failed login check (`/me`) is retried on network errors, timeouts, 5xx and 429, and says
+    what happened (`network unavailable (ENOTFOUND)`, the HTTP status, a timeout); the service log
+    gets a `loginCheck` field. Transient API failures no longer schedule a repair.
+  - `service repair` no longer installs a service where none exists, or re-points a scheduler that
+    another config dir installed; `upgrade` no longer refreshes another config dir's service.
+  - On Windows, `service install` and `service repair` refuse to run elevated when UAC gives the
+    user a limited token day to day, since a task registered that way can't be changed later.
+  - Scheduled syncs carry custom `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `HERMES_HOME` roots like a
+    manual `sync`; `service doctor` warns when the service's roots differ from your shell. Thanks
+    @maxmoneycash (#71).
+  - `service doctor` and `service status` report a broken runner (missing, empty, non-executable,
+    or a bad pointer), a missing `service.json`, and whether a held lock's process still runs.
+- `nightmaxxing upgrade`:
+  - Works for npm global installs on Windows (the shim in the npm prefix wasn't detected), and for
+    `npm install -g --prefix <dir>` installs, which it now updates in place.
+  - On Windows it no longer leaves a ~78 MB copy of the previous version in
+    `node_modules\@nightrunners\.nightmaxxing-<hash>`; the next upgrade or scheduled run removes it.
+- `bun add -g --trust` and `yarn global add` installs work on Windows: the package `bin` is a
+  small launcher that runs the verified native binary. Thanks @Iydah (#28). On macOS and Linux, a
+  Ctrl+C or `kill` that arrives while the launcher is starting now reaches the native binary.
+- Hermes usage includes named profiles (`~/.hermes/profiles/<name>/state.db`). Thanks @kvnloo (#68).
+- `sync`, `login` and `whoami` time out instead of hanging on an API that never answers (60 s for
+  uploads, 15 s for login checks and login requests), wait out rate limits ("try again in 60 s"),
+  and report server errors as server errors instead of "check your network".
+- `sync` says when neither bun nor npx is installed, and names the reason ccusage failed per
+  agent. It exits non-zero when every source fails and rejects `--since` values that aren't a real
+  `YYYY-MM-DD` date.
+- A `config.json` that is valid JSON but not a config fails with "CLI config is not valid" and its
+  path. A stored token is only cleared when the server says it is invalid, not on transient errors.
+- Login and sync errors show the server's message (for example an expired login code).
+
+### Server
+
+- The API accepts the new sources, and the site labels them on the stats page, home page, FAQ,
+  privacy policy and llms.txt.
+- Usage uploads are validated more strictly (dates, token counts, sources, sizes); future-dated
+  days are dropped, and bad rows from older CLIs no longer reject a whole sync.
+- Re-syncing unchanged usage no longer re-prices history: stored cost is kept unless token counts
+  change.
+- API errors return a consistent JSON body with a `_tag` and `message`. The unauthenticated CLI
+  login endpoints are rate-limited per network (HTTP 429 with `Retry-After`).
+- The production API only trusts `https://maxxing.nrght.eu` for CORS and sign-out.
+
 ## 0.6.0 - 2026-08-05
 
 ### Added

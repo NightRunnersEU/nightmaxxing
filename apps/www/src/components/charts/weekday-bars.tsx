@@ -1,107 +1,90 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
-import { ChartGrid } from "./axis";
-import { barLayout, CHART_AXIS, CHART_WIDTH, formatUsd, linearScale, niceMax } from "./scale";
-import { anchorLeft, ChartTooltip } from "./tooltip";
+import { formatUsd } from "../../lib/format";
+import { barAnchor, BarChart, ColumnSpotlight } from "./axis";
+import {
+  barCenter,
+  barLayout,
+  barX,
+  CHART_WIDTH,
+  linearScale,
+  maxValue,
+  niceMax,
+  round2,
+} from "./scale";
+import { ChartLiveRegion, ChartTooltip } from "./tooltip";
+import { useChartCursor } from "./use-chart-cursor";
 
-/** Spend bucketed by weekday (Monday-first) with the peak day called out. */
+/** Spend bucketed by weekday (Monday-first); hovering a bar dims the others. */
 
 /** Monday-first axis tick labels, matching the screenshot (M T W T F S S). */
 const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
-/** Monday-first short names for the peak-day heading and tooltips. */
+/** Monday-first short names for tooltips. */
 const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const HEIGHT = 180;
 const BAR_AREA = HEIGHT - 12;
-/** Fixed dark-blue tint; the peak day renders at full opacity, others dimmed. */
+/** Fixed dark-blue tint; non-hovered bars dim while another bar is hovered. */
 const ACCENT = "#2563eb";
 
 /** `spend` is length-7, Monday-first: spend[0] = Mon … spend[6] = Sun. */
-function WeekdayBars({ spend }: { spend: number[] }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+function WeekdayBars({ spend }: { spend: readonly number[] }) {
+  const cursor = useChartCursor(WEEKDAY_LABELS.length);
+  const hovered = cursor.active;
 
-  const { max, peakIndex } = useMemo(() => {
-    let peak = 0;
-    let peakValue = spend[0] ?? 0;
-    for (let index = 1; index < spend.length; index += 1) {
-      if ((spend[index] ?? 0) > peakValue) {
-        peakValue = spend[index] ?? 0;
-        peak = index;
-      }
-    }
-
-    return { max: niceMax(peakValue), peakIndex: peakValue > 0 ? peak : null };
-  }, [spend]);
+  const max = useMemo(() => niceMax(maxValue(spend, (value) => value)), [spend]);
 
   const y = linearScale(max, BAR_AREA);
-  const { barWidth, slot } = barLayout(WEEKDAY_LABELS.length, 0.55, 64);
-
-  const activeTooltip =
-    hovered === null
-      ? null
-      : (() => {
-          const x = CHART_AXIS + slot * hovered + (slot - barWidth) / 2;
-          return {
-            left: anchorLeft((x + barWidth / 2) / CHART_WIDTH, 11),
-            top: HEIGHT - y(spend[hovered] ?? 0) - 12,
-          };
-        })();
+  const layout = barLayout(WEEKDAY_LABELS.length, 0.55, 64);
+  const centerOf = (index: number) => barCenter(layout, index) / CHART_WIDTH;
 
   return (
-    <div className="relative">
-      <svg
-        aria-label="Spend by weekday"
-        className="block w-full select-none"
-        onPointerLeave={() => setHovered(null)}
-        role="img"
-        viewBox={`0 0 ${CHART_WIDTH} ${HEIGHT + 24}`}
-      >
-        <ChartGrid baseline={HEIGHT} format={formatUsd} max={max} y={y} />
-        {WEEKDAY_LABELS.map((label, index) => {
-          const value = spend[index] ?? 0;
-          const height = Math.max(y(value), 2);
-          const x = CHART_AXIS + slot * index + (slot - barWidth) / 2;
-          const isPeak = index === peakIndex;
-          return (
-            <g key={`${label}-${index}`} onPointerEnter={() => setHovered(index)}>
-              {/* Invisible hover target spanning the full column. */}
-              <rect
-                fill="transparent"
-                height={HEIGHT}
-                width={slot}
-                x={CHART_AXIS + slot * index}
-                y={0}
-              />
-              <rect
-                fill={ACCENT}
-                height={height}
-                opacity={isPeak ? 1 : 0.4}
-                width={barWidth}
-                x={x}
-                y={HEIGHT - height}
-              />
-              <text
-                className="fill-current opacity-45"
-                fontSize={10}
-                textAnchor="middle"
-                x={x + barWidth / 2}
-                y={HEIGHT + 16}
-              >
-                {label}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-      {hovered !== null && activeTooltip !== null ? (
-        <ChartTooltip
-          className="w-56 -translate-y-full"
-          style={{ left: activeTooltip.left, top: `${activeTooltip.top}px` }}
-          subtitle={`${formatUsd(spend[hovered] ?? 0)} total`}
-          title={WEEKDAY_NAMES[hovered]}
-        />
-      ) : null}
-    </div>
+    <BarChart
+      ariaLabel="Spend by weekday"
+      columns={WEEKDAY_LABELS.length}
+      format={formatUsd}
+      height={HEIGHT}
+      labels={WEEKDAY_NAMES.map((name, index) => ({
+        center: centerOf(index),
+        key: name,
+        label: WEEKDAY_LABELS[index] ?? name,
+      }))}
+      max={max}
+      onColumn={cursor.setActive}
+      overlay={
+        <ChartLiveRegion>
+          {hovered === null ? null : (
+            <ChartTooltip
+              anchor={barAnchor(
+                layout,
+                hovered,
+                HEIGHT - y(spend[hovered] ?? 0),
+                y(spend[hovered] ?? 0),
+              )}
+              subtitle={`${formatUsd(spend[hovered] ?? 0)} total`}
+              title={WEEKDAY_NAMES[hovered]}
+            />
+          )}
+        </ChartLiveRegion>
+      }
+      surfaceProps={cursor.surfaceProps}
+      y={y}
+    >
+      {WEEKDAY_NAMES.map((name, index) => {
+        const height = Math.max(y(spend[index] ?? 0), 2);
+        return (
+          <rect
+            fill={ACCENT}
+            height={round2(height)}
+            key={name}
+            width={round2(layout.barWidth)}
+            x={round2(barX(layout, index))}
+            y={round2(HEIGHT - height)}
+          />
+        );
+      })}
+      <ColumnSpotlight active={hovered} height={HEIGHT} slot={layout.slot} />
+    </BarChart>
   );
 }
 

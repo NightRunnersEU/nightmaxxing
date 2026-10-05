@@ -1,17 +1,17 @@
-import { Effect } from "effect";
-import { Layer } from "effect";
-import { Option } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { HttpServerRequest } from "effect/unstable/http";
 
 import { CliAuth, CurrentCliIdentity, Unauthorized } from "@nightmaxxing/api-contract";
-import type { CliIdentity } from "@nightmaxxing/api-contract";
 
+import { bearerToken } from "../../auth/cookies";
 import { TokensService } from "../../tokens/service";
+import { credentialLookupUnavailable } from "../viewer";
 
 /**
  * Bearer-only authentication for the CLI surface: a raw `tmx_` token
  * resolved against cli_tokens (hashed, revocation-checked). No cookies —
- * browsers have no business on these endpoints.
+ * browsers have no business on these endpoints. A lookup that fails is a
+ * 503, not a 401: the CLI discards its token on Unauthorized.
  */
 
 const CliAuthLive = Layer.effect(
@@ -22,16 +22,13 @@ const CliAuthLive = Layer.effect(
     return CliAuth.of((httpEffect) =>
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
-        const authorization = request.headers["authorization"];
-        const rawToken = authorization?.startsWith("Bearer ")
-          ? authorization.slice("Bearer ".length)
-          : null;
+        const rawToken = bearerToken(request);
         const identity =
           rawToken === null
-            ? Option.none<typeof CliIdentity.Type>()
+            ? Option.none()
             : yield* tokens
                 .resolveCliToken(rawToken)
-                .pipe(Effect.catchCause(() => Effect.succeedNone));
+                .pipe(Effect.catchDefect(credentialLookupUnavailable));
         if (Option.isNone(identity)) {
           return yield* Effect.fail(
             new Unauthorized({ message: "Run `nightmaxxing login` first." }),

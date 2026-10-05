@@ -4,16 +4,17 @@ import { Gear, SignOut, Star, User } from "@phosphor-icons/react/ssr";
 
 import { signOut } from "../lib/api";
 import { meQueryOptions } from "../lib/queries";
+import { GITHUB_URL } from "../lib/site";
 import { Avatar } from "./ui/avatar";
 import { buttonClassName } from "./ui/button";
 import { Menu } from "./ui/menu";
 
-const GITHUB_URL = "https://github.com/NightRunnersEU/nightmaxxing";
-
 function Nav() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur">
-      <div className="mx-4 grid h-14 max-w-5xl grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-x border-border px-4 lg:mx-auto">
+      {/* Phones drop the centered links, so the actions get their natural
+          width instead of an equal share that would wrap "Log in". */}
+      <div className="mx-4 grid h-14 max-w-5xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-x border-border px-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-x-0 lg:mx-auto">
         <Link className="min-w-0 truncate text-sm font-semibold" to="/">
           maxxing.nrght.eu
         </Link>
@@ -21,7 +22,9 @@ function Nav() {
           className="hidden items-baseline gap-6 justify-self-center sm:flex"
           aria-label="Primary"
         >
+          {/* In-page anchors: only the one whose hash is in the URL is current. */}
           <Link
+            activeOptions={{ includeHash: true }}
             activeProps={{ className: "text-foreground" }}
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
             hash="leaderboard"
@@ -30,6 +33,8 @@ function Nav() {
             Leaderboard
           </Link>
           <Link
+            activeOptions={{ includeHash: true }}
+            activeProps={{ className: "text-foreground" }}
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
             hash="faq"
             to="/"
@@ -37,7 +42,7 @@ function Nav() {
             FAQ
           </Link>
         </nav>
-        <div className="justify-self-end">
+        <div className="col-start-2 justify-self-end sm:col-start-3">
           <UserMenu />
         </div>
       </div>
@@ -66,7 +71,8 @@ function UserMenu() {
     );
   }
 
-  if (me.isError) {
+  const user = me.data?.user;
+  if (user === undefined) {
     return (
       <div className="flex items-center gap-2">
         <GithubStarLink />
@@ -76,8 +82,6 @@ function UserMenu() {
       </div>
     );
   }
-
-  const user = me.data.user;
 
   return (
     <div className="flex items-center gap-2">
@@ -95,7 +99,7 @@ function UserMenu() {
           </Menu.Item>
           <Menu.Separator />
           <Menu.Item
-            className="text-red-500 data-[highlighted]:bg-red-500/10 data-[highlighted]:text-red-500"
+            className="text-red-500 data-highlighted:bg-red-500/10 data-highlighted:text-red-500"
             icon={<SignOut />}
             onClick={() => signout.mutate()}
           >
@@ -116,7 +120,8 @@ function GithubStarLink() {
       target="_blank"
     >
       <Star className="size-4" weight="bold" />
-      Star
+      {/* Icon-only on the narrowest phones, so the wordmark never truncates. */}
+      <span className="max-[360px]:sr-only">Star</span>
     </a>
   );
 }

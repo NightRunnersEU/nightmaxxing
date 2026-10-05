@@ -10,10 +10,21 @@ import { Card } from "../components/ui/card";
 import { Code } from "../components/ui/code";
 import { Input, Textarea } from "../components/ui/input";
 import { Menu } from "../components/ui/menu";
-import { Tabs } from "../components/ui/tabs";
-import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH } from "../lib/og";
+import { SegmentedControl } from "../components/ui/segmented-control";
+import { cn } from "../lib/cn";
+import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, SITE_OG_IMAGE_PATH } from "../lib/og";
 
+/**
+ * Internal design-system reference. It stays reachable in deployed builds
+ * (the PNG previews need a real Browser binding) but is kept out of search.
+ */
 const Route = createFileRoute("/design")({
+  head: () => ({
+    meta: [
+      { title: "Design system — maxxing.nrght.eu" },
+      { content: "noindex, nofollow", name: "robots" },
+    ],
+  }),
   component: DesignPage,
 });
 
@@ -59,6 +70,11 @@ const BADGE_VARIANTS: { label: string; variant: BadgeVariant }[] = [
 
 const OG_PREVIEWS = [
   {
+    cardSrc: "/og-card",
+    label: "Site",
+    pngSrc: SITE_OG_IMAGE_PATH,
+  },
+  {
     cardSrc: "/og-card/pondorasti",
     label: "Stats",
     pngSrc: "/og/pondorasti.png",
@@ -103,7 +119,7 @@ function DesignPage() {
                 <div className="min-w-0">
                   <span className="mb-1 block text-xs text-muted-foreground">PNG output</span>
                   <OgPngPreview
-                    alt={`${preview.label} profile Open Graph PNG preview`}
+                    alt={`${preview.label} Open Graph PNG preview`}
                     src={preview.pngSrc}
                   />
                 </div>
@@ -117,7 +133,7 @@ function DesignPage() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {COLOR_TOKENS.map((token) => (
             <div className="flex flex-col gap-1.5" key={token.name}>
-              <div className={`h-16 rounded-lg border border-border ${token.swatch}`} />
+              <div className={cn("h-16 rounded-lg border border-border", token.swatch)} />
               <Code>{token.name}</Code>
             </div>
           ))}
@@ -174,8 +190,8 @@ function DesignPage() {
         </div>
       </Section>
 
-      <Section title="Tabs">
-        <Tabs onChange={setTab} options={DEMO_TABS} value={tab} />
+      <Section title="Segmented control">
+        <SegmentedControl label="Demo metric" onChange={setTab} options={DEMO_TABS} value={tab} />
         <p className="mt-2 text-sm text-muted-foreground">
           Selected: <Code>{tab}</Code>
         </p>
@@ -191,7 +207,7 @@ function DesignPage() {
             <Menu.Item icon={<Copy />}>Copy link</Menu.Item>
             <Menu.Separator />
             <Menu.Item
-              className="text-red-500 data-[highlighted]:bg-red-500/10 data-[highlighted]:text-red-500"
+              className="text-red-500 data-highlighted:bg-red-500/10 data-highlighted:text-red-500"
               icon={<Trash />}
             >
               Delete
@@ -262,7 +278,7 @@ function OgHtmlPreview({ src, title }: { src: string; title: string }) {
 
   return (
     <div
-      className="relative aspect-[1200/630] max-w-full overflow-hidden border border-border bg-muted"
+      className="relative aspect-1200/630 max-w-full overflow-hidden border border-border bg-muted"
       ref={ref}
     >
       <iframe
@@ -285,7 +301,7 @@ function OgPngPreview({ alt, src }: { alt: string; src: string }) {
 
   if (isLocalhost) {
     return (
-      <div className="flex aspect-[1200/630] w-full flex-col justify-center gap-2 border border-border bg-muted p-4 text-sm text-muted-foreground">
+      <div className="flex aspect-1200/630 w-full flex-col justify-center gap-2 border border-border bg-muted p-4 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">PNG preview unavailable in local dev</p>
         <p>
           Cloudflare Browser runs remotely and cannot capture <Code>nightmaxxing.localhost</Code>.
@@ -298,7 +314,7 @@ function OgPngPreview({ alt, src }: { alt: string; src: string }) {
   return (
     <img
       alt={alt}
-      className="aspect-[1200/630] w-full border border-border bg-muted object-cover"
+      className="aspect-1200/630 w-full border border-border bg-muted object-cover"
       loading="lazy"
       src={src}
     />

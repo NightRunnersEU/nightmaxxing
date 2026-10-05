@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { ConsoleService } from "./services";
 import {
@@ -374,5 +374,3 @@ describe("formatHighlight", () => {
     expect(formatHighlight("pondorasti", { env: { NO_COLOR: "" } })).toBe("pondorasti");
   });
 });
-
-export {};

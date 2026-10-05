@@ -1,7 +1,6 @@
 import {
   createRootRouteWithContext,
   HeadContent,
-  Link,
   Outlet,
   Scripts,
   useRouterState,
@@ -10,38 +9,46 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import { Footer } from "../components/footer";
 import { Nav } from "../components/nav";
+import { NotFoundPage } from "../components/not-found";
+import { cn } from "../lib/cn";
 import {
   DEFAULT_APPLE_TOUCH_ICON_URL,
   FAVICON_MIME_TYPE,
   faviconUrlFromMatches,
 } from "../lib/favicon";
+import { githubStarsQueryOptions } from "../lib/github-stars";
 import { organizationSchema, webSiteSchema } from "../lib/jsonld";
-import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, SITE_ORIGIN } from "../lib/og";
+import { OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH, SITE_OG_IMAGE_URL } from "../lib/og";
+import { meQueryOptions } from "../lib/queries";
+import { SITE_DESCRIPTION, SITE_NAME } from "../lib/site";
 import styles from "../styles.css?url";
 
 interface RouterContext {
   queryClient: QueryClient;
 }
 
-const DEFAULT_OG_IMAGE_URL = new URL("/og/pondorasti.png", SITE_ORIGIN).toString();
+const DEFAULT_OG_IMAGE_URL = SITE_OG_IMAGE_URL;
 
-function rootHead() {
+const NOT_FOUND_TITLE = `Page not found — ${SITE_NAME}`;
+
+/**
+ * Site-wide defaults. Pages override these by name/property via `pageHead`;
+ * og:url and the canonical link are deliberately absent here because only a
+ * page knows its own URL. A not-found render gets its own title and stays out
+ * of search results: the root is its boundary, so no page head runs after it.
+ */
+function rootHead({ notFound = false }: { notFound?: boolean } = {}) {
   return {
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "maxxing.nrght.eu" },
-      {
-        name: "description",
-        content: "The best place to track token usage.",
-      },
-      { property: "og:title", content: "maxxing.nrght.eu" },
-      {
-        property: "og:description",
-        content: "The best place to track token usage.",
-      },
+      { title: notFound ? NOT_FOUND_TITLE : SITE_NAME },
+      ...(notFound ? [{ name: "robots", content: "noindex" }] : []),
+      { name: "description", content: SITE_DESCRIPTION },
+      { property: "og:site_name", content: SITE_NAME },
+      { property: "og:title", content: SITE_NAME },
+      { property: "og:description", content: SITE_DESCRIPTION },
       { property: "og:type", content: "website" },
-      { property: "og:url", content: SITE_ORIGIN },
       { property: "og:image", content: DEFAULT_OG_IMAGE_URL },
       { property: "og:image:width", content: String(OG_IMAGE_WIDTH) },
       { property: "og:image:height", content: String(OG_IMAGE_HEIGHT) },
@@ -66,28 +73,26 @@ function rootHead() {
 }
 
 const Route = createRootRouteWithContext<RouterContext>()({
-  head: rootHead,
+  // Resolved during SSR (cached after that), so pages ship with the nav's
+  // viewer and the footer's star count and the browser fetches neither on
+  // load. A failure here only drops the nav/footer back to client fetching.
+  loader: async ({ context }) => {
+    await Promise.all([
+      context.queryClient.ensureQueryData(meQueryOptions).catch(() => undefined),
+      context.queryClient.ensureQueryData(githubStarsQueryOptions).catch(() => undefined),
+    ]);
+  },
+  head: ({ matches }) =>
+    rootHead({
+      notFound: matches.some((match) => match._notFound === true || match.status === "notFound"),
+    }),
   component: RootDocument,
   notFoundComponent: NotFoundPage,
 });
 
-function NotFoundPage() {
-  return (
-    <div className="mx-auto mt-24 max-w-sm px-4 text-center">
-      <h1 className="text-xl font-semibold tracking-tight">Page not found</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        We couldn&apos;t find the page you were looking for.
-      </p>
-      <Link className="mt-6 inline-flex text-sm font-medium underline underline-offset-4" to="/">
-        Back to maxxing.nrght.eu
-      </Link>
-    </div>
-  );
-}
-
 function RootDocument() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const isOgCard = pathname.startsWith("/og-card/");
+  const isOgCard = pathname === "/og-card" || pathname.startsWith("/og-card/");
 
   return (
     <html lang="en">
@@ -107,7 +112,7 @@ function RootDocument() {
         {isOgCard ? null : <Nav />}
         <main
           id="content"
-          className={isOgCard ? "" : "mx-4 max-w-5xl border-x border-border lg:mx-auto"}
+          className={cn(!isOgCard && "mx-4 max-w-5xl border-x border-border lg:mx-auto")}
         >
           <Outlet />
         </main>
@@ -123,6 +128,6 @@ function FaviconLink() {
   return <link rel="icon" href={href} type={FAVICON_MIME_TYPE} />;
 }
 
-export { DEFAULT_OG_IMAGE_URL, FaviconLink, rootHead, Route };
+export { DEFAULT_OG_IMAGE_URL, FaviconLink, NOT_FOUND_TITLE, rootHead, Route };
 
 export type { RouterContext };

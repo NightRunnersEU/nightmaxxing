@@ -28,9 +28,44 @@ function sha256Hex(value: string): Effect.Effect<string> {
   });
 }
 
+/** RFC 7636 S256 code challenge: base64url(sha-256(verifier)). */
+function pkceChallenge(verifier: string): Effect.Effect<string> {
+  return Effect.promise(async () => {
+    const digest = await crypto.subtle.digest("SHA-256", encoder.encode(verifier));
+
+    return toBase64Url(new Uint8Array(digest));
+  });
+}
+
 /** cli_tokens.tokenHash format: a labeled sha-256 of the raw `tmx_` token. */
 function hashCliToken(token: string): Effect.Effect<string> {
   return sha256Hex(token).pipe(Effect.map((hex) => `sha256:${hex}`));
+}
+
+/** Secret half of the device-code login flow: only the CLI holds it and
+ * only its sha-256 is stored, so seeing the user code is never enough to
+ * collect the token. */
+function generateDeviceCode(): string {
+  return generateToken();
+}
+
+function hashDeviceCode(deviceCode: string): Effect.Effect<string> {
+  return sha256Hex(deviceCode).pipe(Effect.map((hex) => `sha256:${hex}`));
+}
+
+/**
+ * Stable per-user device id for a machine whose client id is already owned
+ * by another account. Deterministic, so logging the same account in again
+ * on that machine lands on the same device (sync stays idempotent), and
+ * keyed on the user so it never collides with the original owner's row.
+ */
+function deriveDeviceId(clientDeviceId: string, userId: string): Effect.Effect<string> {
+  return sha256Hex(`tmx-device:${userId}:${clientDeviceId}`).pipe(
+    Effect.map(
+      (hex) =>
+        `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`,
+    ),
+  );
 }
 
 /** Unambiguous alphabet (no 0/O/1/I/L) for human-typed login codes. */
@@ -62,10 +97,15 @@ function toBase64Url(bytes: Uint8Array): string {
 
 export {
   CLI_TOKEN_PREFIX,
+  deriveDeviceId,
   generateCliToken,
+  generateDeviceCode,
   generateLoginCode,
   generateToken,
   hashCliToken,
+  hashDeviceCode,
   normalizeLoginCode,
+  pkceChallenge,
   sha256Hex,
+  toBase64Url,
 };

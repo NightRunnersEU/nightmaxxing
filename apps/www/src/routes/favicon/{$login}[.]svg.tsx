@@ -1,8 +1,6 @@
-import * as Schema from "effect/Schema";
 import { createFileRoute } from "@tanstack/react-router";
 import { ProfileIdentityResponse } from "@nightmaxxing/api-contract";
 
-import { resolveApiUrl } from "../../lib/config";
 import { FAVICON_LAYOUT_VERSION } from "../../lib/favicon";
 import {
   avatarFetchUrl,
@@ -13,6 +11,8 @@ import {
   TRANSIENT_FAVICON_CACHE_CONTROL,
 } from "../../lib/favicon-svg";
 import type { FaviconFallbackReason } from "../../lib/favicon-svg";
+import { notFoundResponse } from "../../lib/http";
+import { fetchPublicProfile } from "../../lib/public-api";
 
 type ProfileFaviconIdentity = typeof ProfileIdentityResponse.Type;
 
@@ -43,6 +43,13 @@ const defaultDeps: ProfileFaviconRouteDeps = {
   loadIdentity: loadProfileFaviconIdentity,
 };
 
+/**
+ * A profile's SVG favicon with its avatar embedded. Visibility is checked on
+ * every request, before the cache: a cached icon must not keep serving a
+ * profile that was just hidden (shadow-banned) or removed. The cache only
+ * saves the avatar fetch. Identity failures and 404s are answered without
+ * touching it, so they cannot outlive the condition that caused them.
+ */
 function makeProfileFaviconHandler(overrides: Partial<ProfileFaviconRouteDeps> = {}) {
   const deps = { ...defaultDeps, ...overrides };
 
@@ -50,42 +57,31 @@ function makeProfileFaviconHandler(overrides: Partial<ProfileFaviconRouteDeps> =
     params,
     request,
   }: ProfileFaviconRouteContext): Promise<Response> {
-    const cache = deps.cache();
-    const cacheKey = canonicalFaviconRequest(request);
-    const cached = await readCachedFavicon(cache, cacheKey);
-    if (cached !== null) {
-      return cached;
-    }
-
     let identity: ProfileFaviconIdentity | null;
     try {
       identity = await deps.loadIdentity(params.login, upstreamSignal());
     } catch (error) {
       console.warn("Profile favicon identity load failed", { error, login: params.login });
-      return storeCachedFavicon(
-        cache,
-        cacheKey,
-        withDevFallbackDetail(
-          faviconSvgResponse(
-            buildFaviconSvg(null),
-            TRANSIENT_FAVICON_CACHE_CONTROL,
-            "fallback",
-            "identity-load-failed",
-          ),
-          error,
+      return withDevFallbackDetail(
+        faviconSvgResponse(
+          buildFaviconSvg(null),
+          TRANSIENT_FAVICON_CACHE_CONTROL,
+          "fallback",
+          "identity-load-failed",
         ),
+        error,
       );
     }
 
     if (identity === null) {
-      return storeCachedFavicon(
-        cache,
-        cacheKey,
-        new Response("Not found", {
-          headers: { "cache-control": NOT_FOUND_CACHE_CONTROL },
-          status: 404,
-        }),
-      );
+      return notFoundResponse(NOT_FOUND_CACHE_CONTROL);
+    }
+
+    const cache = deps.cache();
+    const cacheKey = canonicalFaviconRequest(request, identity.login);
+    const cached = await readCachedFavicon(cache, cacheKey);
+    if (cached !== null) {
+      return cached;
     }
 
     let avatarDataUrl: string | null = null;
@@ -125,30 +121,17 @@ function makeProfileFaviconHandler(overrides: Partial<ProfileFaviconRouteDeps> =
   };
 }
 
-async function loadProfileFaviconIdentity(
+function loadProfileFaviconIdentity(
   login: string,
   signal: AbortSignal,
 ): Promise<ProfileFaviconIdentity | null> {
-  const apiUrl = resolveApiUrl().replace(/\/$/, "");
-  const headers = new Headers({ accept: "application/json" });
-
-  const response = await fetch(`${apiUrl}/profiles/${encodeURIComponent(login)}/identity`, {
-    headers,
-    redirect: "manual",
-    signal,
-  });
-  if (response.status === 404) {
-    return null;
-  }
-  if (!response.ok) {
-    throw new Error(`Failed to load favicon identity ${login}: ${response.status}`);
-  }
-
-  return Schema.decodeUnknownPromise(ProfileIdentityResponse)(await response.json());
+  return fetchPublicProfile(login, "/identity", ProfileIdentityResponse, { signal });
 }
 
-function canonicalFaviconRequest(request: Request): Request {
+/** One cache entry per profile: keyed by its canonical login, whatever the URL's case or query. */
+function canonicalFaviconRequest(request: Request, login: string): Request {
   const url = new URL(request.url);
+  url.pathname = `/favicon/${encodeURIComponent(login)}.svg`;
   url.hash = "";
   url.search = "";
   url.searchParams.set("v", FAVICON_LAYOUT_VERSION);

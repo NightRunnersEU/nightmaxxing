@@ -1,18 +1,20 @@
-import { cliTokens, devices, usageDays, userAccounts, users } from "@nightmaxxing/db";
-import { and, asc, eq, sql } from "drizzle-orm";
-import { Effect } from "effect";
-import { Layer } from "effect";
+import { cliTokens, devices, usageDays, userAccounts, users, type Device } from "@nightmaxxing/db";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { Effect, Layer } from "effect";
 
-import type { OAuthProviderId } from "@nightmaxxing/api-contract";
+import { DeviceId, UserId } from "@nightmaxxing/api-contract";
 
 import { Drizzle } from "../database";
-import { AdminRepository, type AdminUserSnapshot } from "./service";
+import { usageAggregates } from "../usage/aggregates";
+import type { AdminDeviceSnapshot, AdminUserSnapshot } from "./fleet";
+import { NpmRegistryLive } from "./npm-registry";
+import { AdminRepository, AdminService, makeAdminService } from "./service";
 
 const makeD1AdminRepository = Effect.fn("makeD1AdminRepository")(function* () {
   const database = yield* Drizzle;
 
   return AdminRepository.of({
-    hasVerifiedEmail: (userId, email) =>
+    hasAnyVerifiedEmail: (userId, emails) =>
       Effect.gen(function* () {
         const rows = yield* database.use((db) =>
           db
@@ -21,7 +23,7 @@ const makeD1AdminRepository = Effect.fn("makeD1AdminRepository")(function* () {
             .where(
               and(
                 eq(userAccounts.userId, userId),
-                eq(userAccounts.email, email),
+                inArray(userAccounts.email, [...emails]),
                 eq(userAccounts.emailVerified, true),
               ),
             )
@@ -32,124 +34,79 @@ const makeD1AdminRepository = Effect.fn("makeD1AdminRepository")(function* () {
       }),
     listUserSnapshots: () =>
       Effect.gen(function* () {
-        const userRows = yield* database.use((db) =>
-          db
-            .select({
-              avatarUrl: users.avatarUrl,
-              createdAt: users.createdAt,
-              id: users.id,
-              login: users.login,
-              name: users.name,
-              shadowBannedAt: users.shadowBannedAt,
-              shadowBannedByUserId: users.shadowBannedByUserId,
-              updatedAt: users.updatedAt,
-            })
-            .from(users)
-            .orderBy(asc(users.login)),
-        );
-        const accountRows = yield* database.use((db) =>
-          db
-            .select({
-              email: userAccounts.email,
-              emailVerified: userAccounts.emailVerified,
-              login: userAccounts.login,
-              provider: userAccounts.provider,
-              userId: userAccounts.userId,
-            })
-            .from(userAccounts)
-            .orderBy(asc(userAccounts.provider)),
-        );
-        const deviceRows = yield* database.use((db) =>
-          db
-            .select({
-              arch: devices.arch,
-              createdAt: devices.createdAt,
-              id: devices.id,
-              lastCheckInAt: devices.lastCheckInAt,
-              lastSyncAt: devices.lastSyncAt,
-              name: devices.name,
-              platform: devices.platform,
-              serviceAutoUpdateAttemptedAt: devices.serviceAutoUpdateAttemptedAt,
-              serviceAutoUpdateCompletedAt: devices.serviceAutoUpdateCompletedAt,
-              serviceAutoUpdateCurrentVersion: devices.serviceAutoUpdateCurrentVersion,
-              serviceAutoUpdateEnabled: devices.serviceAutoUpdateEnabled,
-              serviceAutoUpdateError: devices.serviceAutoUpdateError,
-              serviceAutoUpdateInstalledVersion: devices.serviceAutoUpdateInstalledVersion,
-              serviceAutoUpdateLatestVersion: devices.serviceAutoUpdateLatestVersion,
-              serviceAutoUpdateManager: devices.serviceAutoUpdateManager,
-              serviceAutoUpdateReason: devices.serviceAutoUpdateReason,
-              serviceAutoUpdateStatus: devices.serviceAutoUpdateStatus,
-              serviceBackend: devices.serviceBackend,
-              serviceError: devices.serviceError,
-              serviceReloadRequired: devices.serviceReloadRequired,
-              serviceRepairAttemptedAt: devices.serviceRepairAttemptedAt,
-              serviceRepairCompletedAt: devices.serviceRepairCompletedAt,
-              serviceRepairError: devices.serviceRepairError,
-              serviceRepairReason: devices.serviceRepairReason,
-              serviceRepairStatus: devices.serviceRepairStatus,
-              serviceRunnerTarget: devices.serviceRunnerTarget,
-              serviceRunnerVersion: devices.serviceRunnerVersion,
-              serviceSchedulerActive: devices.serviceSchedulerActive,
-              serviceStatus: devices.serviceStatus,
-              serviceTemplateVersion: devices.serviceTemplateVersion,
-              userId: devices.userId,
-              version: devices.version,
-            })
-            .from(devices),
-        );
-        const tokenRows = yield* database.use((db) =>
-          db
-            .select({
-              deviceId: cliTokens.deviceId,
-              lastUsedAt: cliTokens.lastUsedAt,
-              revokedAt: cliTokens.revokedAt,
-              userId: cliTokens.userId,
-            })
-            .from(cliTokens),
-        );
-        const usageRows = yield* database.use((db) =>
-          db
-            .select({
-              activeDays: sql<number>`count(distinct ${usageDays.date})`,
-              lastUsageDate: sql<string | null>`max(${usageDays.date})`,
-              totalSpendUsd: sql<number | null>`sum(${usageDays.costUsd})`,
-              totalTokens: sql<number | null>`sum(${usageDays.totalTokens})`,
-              userId: usageDays.userId,
-            })
-            .from(usageDays)
-            .groupBy(usageDays.userId),
-        );
-        const sourceRows = yield* database.use((db) =>
-          db
-            .selectDistinct({
-              source: usageDays.source,
-              userId: usageDays.userId,
-            })
-            .from(usageDays)
-            .orderBy(asc(usageDays.source)),
-        );
-        const deviceUsageRows = yield* database.use((db) =>
-          db
-            .select({
-              activeDays: sql<number>`count(distinct ${usageDays.date})`,
-              deviceId: usageDays.deviceId,
-              lastUsageDate: sql<string | null>`max(${usageDays.date})`,
-              totalSpendUsd: sql<number | null>`sum(${usageDays.costUsd})`,
-              totalTokens: sql<number | null>`sum(${usageDays.totalTokens})`,
-              userId: usageDays.userId,
-            })
-            .from(usageDays)
-            .groupBy(usageDays.userId, usageDays.deviceId),
-        );
-        const deviceSourceRows = yield* database.use((db) =>
-          db
-            .selectDistinct({
-              deviceId: usageDays.deviceId,
-              source: usageDays.source,
-              userId: usageDays.userId,
-            })
-            .from(usageDays)
-            .orderBy(asc(usageDays.source)),
+        // One D1 round trip. Batched rows come back as objects keyed by
+        // column name, so every statement here must select unique names.
+        const [
+          userRows,
+          accountRows,
+          deviceRows,
+          tokenRows,
+          usageRows,
+          sourceRows,
+          deviceUsageRows,
+          deviceSourceRows,
+        ] = yield* database.use((db) =>
+          db.batch([
+            db
+              .select({
+                avatarUrl: users.avatarUrl,
+                createdAt: users.createdAt,
+                id: users.id,
+                login: users.login,
+                name: users.name,
+                shadowBannedAt: users.shadowBannedAt,
+                shadowBannedByUserId: users.shadowBannedByUserId,
+                updatedAt: users.updatedAt,
+              })
+              .from(users)
+              .orderBy(asc(users.login)),
+            db
+              .select({
+                email: userAccounts.email,
+                emailVerified: userAccounts.emailVerified,
+                login: userAccounts.login,
+                provider: userAccounts.provider,
+                userId: userAccounts.userId,
+              })
+              .from(userAccounts)
+              .orderBy(asc(userAccounts.provider)),
+            db.select().from(devices),
+            db
+              .select({
+                deviceId: cliTokens.deviceId,
+                lastUsedAt: cliTokens.lastUsedAt,
+                revokedAt: cliTokens.revokedAt,
+                userId: cliTokens.userId,
+              })
+              .from(cliTokens),
+            db
+              .select({ ...usageSummaryColumns(), userId: usageDays.userId })
+              .from(usageDays)
+              .groupBy(usageDays.userId),
+            db
+              .selectDistinct({
+                source: usageDays.source,
+                userId: usageDays.userId,
+              })
+              .from(usageDays)
+              .orderBy(asc(usageDays.source)),
+            db
+              .select({
+                ...usageSummaryColumns(),
+                deviceId: usageDays.deviceId,
+                userId: usageDays.userId,
+              })
+              .from(usageDays)
+              .groupBy(usageDays.userId, usageDays.deviceId),
+            db
+              .selectDistinct({
+                deviceId: usageDays.deviceId,
+                source: usageDays.source,
+                userId: usageDays.userId,
+              })
+              .from(usageDays)
+              .orderBy(asc(usageDays.source)),
+          ]),
         );
 
         const accountsByUser = groupBy(accountRows, (row) => row.userId);
@@ -164,68 +121,23 @@ const makeD1AdminRepository = Effect.fn("makeD1AdminRepository")(function* () {
           const usage = usageByUser.get(user.id);
 
           return {
-            accounts: (accountsByUser.get(user.id) ?? []).map((account) => ({
-              email: account.email,
-              emailVerified: account.emailVerified,
-              login: account.login,
-              provider: account.provider as OAuthProviderId,
-            })),
-            devices: (devicesByUser.get(user.id) ?? []).map((device) => ({
-              arch: device.arch,
-              createdAt: device.createdAt.toISOString(),
-              id: device.id,
-              lastCheckInAt: device.lastCheckInAt?.toISOString() ?? null,
-              lastSyncAt: device.lastSyncAt?.toISOString() ?? null,
-              name: device.name,
-              platform: device.platform,
-              serviceAutoUpdateAttemptedAt:
-                device.serviceAutoUpdateAttemptedAt?.toISOString() ?? null,
-              serviceAutoUpdateCompletedAt:
-                device.serviceAutoUpdateCompletedAt?.toISOString() ?? null,
-              serviceAutoUpdateCurrentVersion: device.serviceAutoUpdateCurrentVersion,
-              serviceAutoUpdateEnabled: device.serviceAutoUpdateEnabled,
-              serviceAutoUpdateError: device.serviceAutoUpdateError,
-              serviceAutoUpdateInstalledVersion: device.serviceAutoUpdateInstalledVersion,
-              serviceAutoUpdateLatestVersion: device.serviceAutoUpdateLatestVersion,
-              serviceAutoUpdateManager:
-                device.serviceAutoUpdateManager as AdminUserSnapshot["devices"][number]["serviceAutoUpdateManager"],
-              serviceAutoUpdateReason:
-                device.serviceAutoUpdateReason as AdminUserSnapshot["devices"][number]["serviceAutoUpdateReason"],
-              serviceAutoUpdateStatus:
-                device.serviceAutoUpdateStatus as AdminUserSnapshot["devices"][number]["serviceAutoUpdateStatus"],
-              serviceBackend: device.serviceBackend,
-              serviceError: device.serviceError,
-              serviceReloadRequired: device.serviceReloadRequired,
-              serviceRepairAttemptedAt: device.serviceRepairAttemptedAt?.toISOString() ?? null,
-              serviceRepairCompletedAt: device.serviceRepairCompletedAt?.toISOString() ?? null,
-              serviceRepairError: device.serviceRepairError,
-              serviceRepairReason:
-                device.serviceRepairReason as AdminUserSnapshot["devices"][number]["serviceRepairReason"],
-              serviceRepairStatus:
-                device.serviceRepairStatus as AdminUserSnapshot["devices"][number]["serviceRepairStatus"],
-              serviceRunnerTarget: device.serviceRunnerTarget,
-              serviceRunnerVersion: device.serviceRunnerVersion,
-              serviceSchedulerActive: device.serviceSchedulerActive,
-              serviceStatus:
-                device.serviceStatus as AdminUserSnapshot["devices"][number]["serviceStatus"],
-              serviceTemplateVersion: device.serviceTemplateVersion,
-              version: device.version,
-            })),
-            deviceUsage: (deviceUsageByUser.get(user.id) ?? []).map((row) => ({
-              activeDays: row.activeDays,
-              deviceId: row.deviceId,
-              lastUsageDate: row.lastUsageDate ?? null,
-              sources: (sourcesByDevice.get(row.deviceId) ?? []).map((source) => source.source),
-              totalSpendUsd: row.totalSpendUsd ?? 0,
-              totalTokens: row.totalTokens ?? 0,
-            })),
+            accounts: (accountsByUser.get(user.id) ?? []).map(
+              ({ userId: _userId, ...account }) => account,
+            ),
+            devices: (devicesByUser.get(user.id) ?? []).map(toAdminDeviceSnapshot),
+            deviceUsage: (deviceUsageByUser.get(user.id) ?? []).map(
+              ({ userId: _userId, ...row }) => ({
+                ...row,
+                sources: (sourcesByDevice.get(row.deviceId) ?? []).map((source) => source.source),
+              }),
+            ),
             sources: (sourcesByUser.get(user.id) ?? []).map((row) => row.source).sort(),
             shadowBan:
               user.shadowBannedAt === null || user.shadowBannedByUserId === null
                 ? null
                 : {
                     at: user.shadowBannedAt.toISOString(),
-                    byUserId: user.shadowBannedByUserId,
+                    byUserId: UserId.make(user.shadowBannedByUserId),
                   },
             tokens: (tokensByUser.get(user.id) ?? []).map((token) => ({
               deviceId: token.deviceId,
@@ -270,6 +182,50 @@ const makeD1AdminRepository = Effect.fn("makeD1AdminRepository")(function* () {
 
 const AdminRepositoryLive = Layer.effect(AdminRepository, makeD1AdminRepository());
 
+const AdminServiceLive = Layer.effect(AdminService, makeAdminService()).pipe(
+  Layer.provide(Layer.mergeAll(AdminRepositoryLive, NpmRegistryLive)),
+);
+
+/** Admin totals include shadow-banned users' usage: moderation needs the full picture. */
+function usageSummaryColumns() {
+  return {
+    activeDays: usageAggregates.activeDays(),
+    lastUsageDate: usageAggregates.lastDate(),
+    totalSpendUsd: usageAggregates.spendUsd(),
+    totalTokens: usageAggregates.totalTokens(),
+  };
+}
+
+/** Every device column except the owner, with timestamps as ISO strings. */
+function toAdminDeviceSnapshot({
+  createdAt,
+  id,
+  lastCheckInAt,
+  lastSyncAt,
+  serviceAutoUpdateAttemptedAt,
+  serviceAutoUpdateCompletedAt,
+  serviceRepairAttemptedAt,
+  serviceRepairCompletedAt,
+  userId: _userId,
+  ...device
+}: Device): AdminDeviceSnapshot {
+  return {
+    ...device,
+    createdAt: createdAt.toISOString(),
+    id: DeviceId.make(id),
+    lastCheckInAt: isoOrNull(lastCheckInAt),
+    lastSyncAt: isoOrNull(lastSyncAt),
+    serviceAutoUpdateAttemptedAt: isoOrNull(serviceAutoUpdateAttemptedAt),
+    serviceAutoUpdateCompletedAt: isoOrNull(serviceAutoUpdateCompletedAt),
+    serviceRepairAttemptedAt: isoOrNull(serviceRepairAttemptedAt),
+    serviceRepairCompletedAt: isoOrNull(serviceRepairCompletedAt),
+  };
+}
+
+function isoOrNull(value: Date | null): string | null {
+  return value?.toISOString() ?? null;
+}
+
 function groupBy<A, K>(values: readonly A[], key: (value: A) => K): Map<K, A[]> {
   const grouped = new Map<K, A[]>();
   for (const value of values) {
@@ -285,4 +241,4 @@ function groupBy<A, K>(values: readonly A[], key: (value: A) => K): Map<K, A[]> 
   return grouped;
 }
 
-export { AdminRepositoryLive };
+export { AdminRepositoryLive, AdminServiceLive };

@@ -1,10 +1,17 @@
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpApiClient from "effect/unstable/httpapi/HttpApiClient";
 import { createIsomorphicFn } from "@tanstack/react-start";
-import { NightmaxxingApi } from "@nightmaxxing/api-contract";
+import {
+  ApiErrors,
+  InternalServerError,
+  ServiceUnavailable,
+  NightmaxxingApi,
+} from "@nightmaxxing/api-contract";
+import type { ApiError, ApiErrorTag, MeResponse } from "@nightmaxxing/api-contract";
 
 import { resolveApiUrl } from "./config";
 
@@ -12,42 +19,34 @@ import { resolveApiUrl } from "./config";
  * The typed client derived from the shared contract, cookie-authenticated
  * (credentials ride on every request). Library functions keep Promise
  * signatures — Effects stay inside this module; components never see them.
+ *
+ * One runtime and one client serve every call. Per-request fetch options
+ * (the SSR cookie) are provided to each call's fiber, which is where
+ * FetchHttpClient reads them, so nothing is rebuilt or leaked per request.
  */
 
 type NightmaxxingApiClient = HttpApiClient.ForApi<typeof NightmaxxingApi>;
 
-interface ApiClientHandle {
-  client(): Promise<NightmaxxingApiClient>;
-  run<A, E>(effect: Effect.Effect<A, E, never>): Promise<A>;
-}
+/** The API's session cookie name (`SESSION_COOKIE` in apps/api auth/cookies.ts). */
+const SESSION_COOKIE = "tmx_session";
 
-function createApiClient(apiUrl: string, requestInit: RequestInit): ApiClientHandle {
-  const layer = Layer.mergeAll(
-    FetchHttpClient.layer,
-    Layer.succeed(FetchHttpClient.RequestInit, requestInit),
-  );
-  const runtime = ManagedRuntime.make(layer);
+class SignOutFailed extends Data.TaggedError("SignOutFailed")<{
+  message: string;
+  status: number;
+}> {}
 
-  let cached: Promise<NightmaxxingApiClient> | null = null;
-  const build = HttpApiClient.make(NightmaxxingApi, {
-    baseUrl: apiUrl.replace(/\/$/, ""),
-  });
+const runtime = ManagedRuntime.make(FetchHttpClient.layer);
+const clients = new Map<string, Promise<NightmaxxingApiClient>>();
 
-  return {
-    client: () => (cached ??= runtime.runPromise(build)),
-    run: (effect) => runtime.runPromise(effect),
-  };
-}
-
-let handle: ApiClientHandle | null = null;
-
-async function clientHandle(): Promise<ApiClientHandle> {
-  if (typeof window === "undefined") {
-    return createApiClient(resolveApiUrl(), await serverRequestInit());
+function apiClient(apiUrl: string): Promise<NightmaxxingApiClient> {
+  const baseUrl = apiUrl.replace(/\/$/, "");
+  let client = clients.get(baseUrl);
+  if (client === undefined) {
+    client = runtime.runPromise(HttpApiClient.make(NightmaxxingApi, { baseUrl }));
+    clients.set(baseUrl, client);
   }
 
-  handle ??= createApiClient(resolveApiUrl(), { credentials: "include" });
-  return handle;
+  return client;
 }
 
 const requestCookie = createIsomorphicFn()
@@ -58,7 +57,7 @@ const requestCookie = createIsomorphicFn()
     return getRequestHeader("cookie");
   });
 
-async function serverRequestInit(): Promise<RequestInit> {
+async function requestInit(): Promise<RequestInit> {
   const cookie = await requestCookie();
 
   return {
@@ -70,47 +69,110 @@ async function serverRequestInit(): Promise<RequestInit> {
 async function runApi<A, E>(
   call: (client: NightmaxxingApiClient) => Effect.Effect<A, E, never>,
 ): Promise<A> {
-  const active = await clientHandle();
-  const client = await active.client();
+  const [client, init] = await Promise.all([apiClient(resolveApiUrl()), requestInit()]);
 
-  return active.run(call(client));
+  return runtime.runPromise(
+    call(client).pipe(
+      Effect.provideService(FetchHttpClient.RequestInit, init),
+      // Nothing here traces, and traceparent/b3 headers would make every
+      // cross-origin GET a CORS preflight plus the request itself.
+      Effect.provideService(HttpClient.TracerPropagationEnabled, false),
+    ),
+  );
 }
 
-/** Best-effort message extraction from the contract's tagged errors. */
+function hasSessionCookie(cookieHeader: string | undefined): boolean {
+  return (
+    cookieHeader?.split(";").some((pair) => pair.trim().startsWith(`${SESSION_COOKIE}=`)) ?? false
+  );
+}
+
+/**
+ * The signed-in viewer, or null when signed out — an expected answer rather
+ * than an error, so it caches and dehydrates with the SSR page like any other
+ * read. During SSR a request without a session cookie is signed out without
+ * asking the API.
+ */
+async function fetchViewer(): Promise<MeResponse | null> {
+  if (typeof window === "undefined" && !hasSessionCookie(await requestCookie())) {
+    return null;
+  }
+
+  try {
+    return await runApi((client) => client.me.me());
+  } catch (error) {
+    if (isApiError(error, "Unauthorized")) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * The contract error a failed `runApi` call rejected with, if any. The derived
+ * client decodes error bodies into the contract's tagged error classes, and
+ * `runPromise` rejects with that failure itself — anything else (network,
+ * decode, defects) is not an API error.
+ */
+function apiError(error: unknown): ApiError | null {
+  return ApiErrors.some((ErrorClass) => error instanceof ErrorClass) ? (error as ApiError) : null;
+}
+
+function isApiError<const Tag extends ApiErrorTag>(
+  error: unknown,
+  tag: Tag,
+): error is Extract<ApiError, { readonly _tag: Tag }> {
+  return apiError(error)?._tag === tag;
+}
+
+/** The API's human-readable message for contract errors; `fallback` otherwise. */
 function errorMessage(error: unknown, fallback: string): string {
-  const inner = apiError(error);
-  const message = (inner as { message?: unknown }).message;
-  if (typeof message === "string" && message.length > 0) {
-    return message;
-  }
+  const message = apiError(error)?.message;
 
-  return fallback;
+  return message === undefined || message.length === 0 ? fallback : message;
 }
 
-function isApiError(error: unknown, tag: string): boolean {
-  const inner = apiError(error);
-  const innerTag = (inner as { _tag?: unknown })._tag;
-
-  return innerTag === tag;
+/**
+ * A profile that does not exist, as the API reports it: `UserNotFound`, or
+ * `RouteNotFound` when the router rejects the path before any handler runs
+ * (a `:login` past its 100-character param limit).
+ */
+function isNotFoundApiError(error: unknown): boolean {
+  return isApiError(error, "UserNotFound") || isApiError(error, "RouteNotFound");
 }
 
-function apiError(error: unknown): unknown {
-  if (typeof error === "object" && error !== null) {
-    const cause = (error as { cause?: unknown }).cause ?? error;
-    return typeof cause === "object" && cause !== null && "_tag" in cause && cause._tag === "Fail"
-      ? ((cause as { error?: unknown }).error ?? cause)
-      : cause;
-  }
-
-  return error;
+/** Transport failures and 5xx are worth retrying; contract 4xx failures are not. */
+function isRetryableApiError(error: unknown): boolean {
+  return (
+    apiError(error) === null ||
+    error instanceof InternalServerError ||
+    error instanceof ServiceUnavailable
+  );
 }
 
 /** Raw routes (OAuth signout) sit outside the derived client. */
 async function signOut(): Promise<void> {
-  await fetch(`${resolveApiUrl()}/auth/signout`, {
+  const response = await fetch(`${resolveApiUrl()}/auth/signout`, {
     credentials: "include",
     method: "POST",
   });
+  if (!response.ok) {
+    throw new SignOutFailed({
+      message: `Sign out failed (${response.status}).`,
+      status: response.status,
+    });
+  }
 }
 
-export { errorMessage, isApiError, runApi, signOut };
+export {
+  errorMessage,
+  fetchViewer,
+  hasSessionCookie,
+  isApiError,
+  isNotFoundApiError,
+  isRetryableApiError,
+  runApi,
+  SignOutFailed,
+  signOut,
+};

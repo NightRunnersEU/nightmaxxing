@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { DEFAULT_SOURCE_NAMES, resolveSources } from "./sources";
 
@@ -24,7 +24,55 @@ describe("resolveSources", () => {
     });
   });
 
+  it("maps every source to its focused ccusage subcommand", () => {
+    expect(DEFAULT_SOURCE_NAMES).toEqual([
+      "claude",
+      "codex",
+      "opencode",
+      "gemini",
+      "copilot",
+      "hermes",
+      "pi",
+      "omp",
+      "grok",
+      "antigravity",
+      "zcode",
+      "amp",
+      "qwen",
+      "kimi",
+      "kilo",
+      "goose",
+      "droid",
+      "codebuff",
+      "openclaw",
+    ]);
+    for (const { source, subcommand } of resolveSources(DEFAULT_SOURCE_NAMES).sources) {
+      expect(subcommand).toBe(source === "omp" ? "pi" : source);
+    }
+  });
+
+  it("reads Oh My Pi through ccusage's pi adapter", () => {
+    expect(resolveSources(["OMP", "pi"])).toEqual({
+      invalid: [],
+      sources: [
+        { source: "omp", subcommand: "pi" },
+        { source: "pi", subcommand: "pi" },
+      ],
+    });
+  });
+
+  it("normalizes case and whitespace and drops duplicates", () => {
+    expect(resolveSources([" Grok", "zcode", "grok "])).toEqual({
+      invalid: [],
+      sources: [
+        { source: "grok", subcommand: "grok" },
+        { source: "zcode", subcommand: "zcode" },
+      ],
+    });
+  });
+
   it("rejects unknown sources", () => {
     expect(resolveSources(["bogus"]).invalid).toEqual(["bogus"]);
+    expect(resolveSources(["supercharge", "cursor"]).invalid).toEqual(["supercharge", "cursor"]);
   });
 });

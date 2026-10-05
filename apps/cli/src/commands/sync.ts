@@ -2,28 +2,34 @@ import { arch, hostname } from "node:os";
 
 import { Data, Effect, Option } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
-import type {
-  AuthUser,
-  RawUsageReportInput,
-  SourceUsageStatsInput,
-  UsageDayInput,
+import {
+  type AuthUser,
+  isDateKey,
+  type RawUsageReportInput,
+  type SourceUsageStatsInput,
+  type UsageDayInput,
+  type UsageSource,
 } from "@nightmaxxing/api-contract";
 
 import packageJson from "../../package.json";
+import { booleanFlag } from "../flags";
 import { aggregateDays, summarize, type SourceSummary } from "../ccusage/aggregate";
 import {
   type CcusageReportKind,
   CcusageRunError,
   type CcusageRunErrorCode,
+  ccusageRunDiagnostic,
+  ccusageStderrReason,
   dailyCcusageCommand,
   runCcusageDailyReport,
   runCcusageSessionReport,
 } from "../ccusage/runner";
+import type { SyncSourcePlan, SyncSourcePlans } from "../ccusage/cadence";
+import { fingerprintSource, type LogRootOptions } from "../ccusage/fingerprint";
 import { DEFAULT_SOURCE_NAMES, resolveSources } from "../ccusage/sources";
 import {
   ApiClientService,
   BrowserService,
-  ClockService,
   type CliConfig,
   ConfigService,
   ConsoleService,
@@ -38,6 +44,16 @@ import {
   shouldUseClack,
   writeJson,
 } from "../output";
+import {
+  type ApiFailureDetail,
+  apiFailureMessage,
+  type ApiRetryPolicy,
+  describeApiFailure,
+  ME_RETRY_POLICY,
+  USAGE_UPLOAD_TIMEOUT_MS,
+  withApiRetry,
+  withApiTimeout,
+} from "../api-failure";
 import { validateCurrentLogin } from "../auth-validation";
 import { browserLoginEffect } from "./login";
 import { NotLoggedInError } from "./whoami";
@@ -45,15 +61,45 @@ import { NotLoggedInError } from "./whoami";
 class SyncPushError extends Data.TaggedError("SyncPushError")<{
   readonly cause: unknown;
 }> {
-  override message =
-    "error: failed to push usage to nightmaxxing\nhint: check your network and run nightmaxxing sync again";
+  override get message() {
+    return apiFailureMessage(
+      "failed to push usage to nightmaxxing",
+      this.cause,
+      "check your network and run nightmaxxing sync again",
+    );
+  }
 }
 
+/**
+ * `/me` failed for a reason other than a bad token (a bad token is
+ * `Unauthorized`, handled before this): the message, `--json` and the
+ * service log say what the last of `attempts` tries ran into.
+ */
 class SyncAuthValidationError extends Data.TaggedError("SyncAuthValidationError")<{
+  readonly attempts?: number | undefined;
   readonly cause: unknown;
 }> {
-  override message =
-    "error: failed to validate stored login\nhint: check your network and run nightmaxxing login again";
+  override get message() {
+    return apiFailureMessage(
+      this.summary,
+      this.cause,
+      "check your network and run nightmaxxing sync again",
+    );
+  }
+
+  /** "failed to validate stored login", plus "after N attempts" when it retried. */
+  get summary() {
+    const attempts = this.attempts ?? 1;
+    return `failed to validate stored login${attempts > 1 ? ` after ${attempts} attempts` : ""}`;
+  }
+
+  get loginCheck(): LoginCheckFailure {
+    return { attempts: this.attempts ?? 1, ...describeApiFailure(this.cause) };
+  }
+
+  get jsonFields() {
+    return { loginCheck: this.loginCheck };
+  }
 }
 
 class UnknownSourceError extends Data.TaggedError("UnknownSourceError")<{
@@ -62,6 +108,110 @@ class UnknownSourceError extends Data.TaggedError("UnknownSourceError")<{
   override get message() {
     return `error: unknown source${this.names.length > 1 ? "s" : ""}: ${this.names.join(", ")}\nhint: valid sources are ${DEFAULT_SOURCE_NAMES.join(", ")}`;
   }
+}
+
+class InvalidSinceError extends Data.TaggedError("InvalidSinceError")<{
+  readonly value: string;
+}> {
+  override get message() {
+    return `error: invalid --since date: ${this.value}\nhint: use a calendar date in YYYY-MM-DD format, e.g. --since 2026-01-31`;
+  }
+}
+
+/**
+ * Every requested source failed and nothing was collected. Raised after the
+ * per-source results (and the --json payload) are written, so the exit code
+ * reflects the failure. A "partial" sync is not an error: whatever was
+ * collected was pushed, and the payload/table name the degraded sources.
+ */
+class SyncSourcesFailedError extends Data.TaggedError(
+  "SyncSourcesFailedError",
+)<SyncSourcesFailure> {
+  override get message() {
+    const { hint, lines } = describeSyncSourcesFailure(this);
+    return [`error: ${lines[0]}`, ...lines.slice(1), `hint: ${hint}`].join("\n");
+  }
+}
+
+interface SyncSourcesFailure {
+  /** Sources the run's limits left for the next run (`SyncSourceLimits`). */
+  readonly deferred?: number | undefined;
+  readonly failures: readonly SyncSourceFailure[];
+  /** Names the missing npx (`npx.cmd` on Windows); defaults to this machine's. */
+  readonly platform?: NodeJS.Platform | undefined;
+  /**
+   * Failed sources with no logs on this machine (`sourcesWithoutLogs`). A
+   * broken ccusage fails every agent, so the message counts these instead of
+   * naming all 18 next to the few that have usage.
+   */
+  readonly withoutLogs?: readonly UsageSource[] | undefined;
+}
+
+/**
+ * Why every source failed, without the console's `error:`/`hint:` framing: a
+ * summary line, then one line per distinct reason naming the sources it hit
+ * (with the line of ccusage's stderr that says why, `ccusageStderrReason`).
+ * The scheduled service reports the same lines as its `lastError`.
+ */
+function describeSyncSourcesFailure({
+  deferred = 0,
+  failures,
+  platform = process.platform,
+  withoutLogs: without,
+}: SyncSourcesFailure): {
+  hint: string;
+  lines: string[];
+} {
+  const sources = failures.map((failure) => failure.source);
+  const withoutLogs = new Set(without);
+  const named = (failed: readonly UsageSource[]) => {
+    const listed = failed.filter((source) => !withoutLogs.has(source));
+    const rest = failed.length - listed.length;
+    const others = `${rest} agent${rest === 1 ? "" : "s"} without logs`;
+    if (rest === 0) {
+      return listed.join(", ");
+    }
+    return listed.length === 0 ? others : `${listed.join(", ")} and ${others}`;
+  };
+  if (sources.length === 0) {
+    return {
+      hint: "run nightmaxxing sync again",
+      lines: ["no usage synced; source collection failed"],
+    };
+  }
+
+  // The runner reports command_not_found only once the `npx` fallback is
+  // missing too.
+  const missing = `neither bun nor ${platform === "win32" ? "npx.cmd" : "npx"} is on PATH`;
+  // Neither `bun x` nor the `npx` fallback exists: nothing else can help.
+  if (failures.every((failure) => failure.issue.code === "command_not_found")) {
+    return {
+      hint: "install Bun (https://bun.sh) or Node.js (https://nodejs.org), then run nightmaxxing sync again",
+      lines: [`no usage synced; could not run ccusage for ${named(sources)}: ${missing}`],
+    };
+  }
+
+  // One line per distinct reason, naming the sources it hit.
+  const reasons = new Map<string, UsageSource[]>();
+  for (const { issue, source } of failures) {
+    const reason =
+      issue.code === "command_not_found"
+        ? `${issue.message} (${missing})`
+        : issue.detail === undefined
+          ? issue.message
+          : `${issue.message}: ${ccusageStderrReason(issue.detail) ?? issue.detail}`;
+    reasons.set(reason, [...(reasons.get(reason) ?? []), source]);
+  }
+  return {
+    hint: `check that ccusage runs for ${sources.length > 1 ? "these agents" : "this agent"}, then run nightmaxxing sync again`,
+    lines: [
+      `no usage synced; ccusage failed for ${named(sources)}`,
+      ...[...reasons].map(([reason, failed]) => `${named(failed)}: ${reason}`),
+      ...(deferred > 0
+        ? [`skipped ${deferred} more source${deferred === 1 ? "" : "s"} until the next run`]
+        : []),
+    ],
+  };
 }
 
 const usd0 = new Intl.NumberFormat("en-US", {
@@ -86,15 +236,13 @@ const ANSI_STYLE_SEQUENCE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 
 const syncCommand = Command.make(
   "sync",
   {
-    dryRun: Flag.boolean("dry-run").pipe(
-      Flag.withDescription("Aggregate locally but push nothing"),
-    ),
-    json: Flag.boolean("json").pipe(Flag.withDescription("Output machine-readable JSON")),
-    since: Flag.string("since").pipe(
+    dryRun: booleanFlag("dry-run").pipe(Flag.withDescription("Aggregate locally but push nothing")),
+    json: booleanFlag("json").pipe(Flag.withDescription("Output machine-readable JSON")),
+    since: Flag.String("since").pipe(
       Flag.optional,
       Flag.withDescription("Only sync days on or after this date (YYYY-MM-DD)"),
     ),
-    sources: Flag.string("sources").pipe(
+    sources: Flag.String("sources").pipe(
       Flag.optional,
       Flag.withDescription(
         `Comma-separated agents to sync (default: ${DEFAULT_SOURCE_NAMES.join(",")})`,
@@ -120,19 +268,45 @@ interface SyncOptions {
 interface SyncProgramOptions extends SyncOptions {
   auth?: SyncAuth | undefined;
   silent?: boolean | undefined;
+  /**
+   * Scheduled-run cadence per source (see ccusage/cadence.ts). A source
+   * without a plan runs its daily and session reports over `since`, and
+   * uploads its session count only when `since` is unset.
+   */
+  sourcePlans?: SyncSourcePlans | undefined;
+  sourceLimits?: SyncSourceLimits | undefined;
   uploadPolicy?: UploadRetryPolicy | undefined;
 }
 
+/**
+ * Bounds on how long a (scheduled) sync spends in ccusage. A hanging ccusage
+ * (npx stuck on the network, say) hangs for every source, so waiting out each
+ * source's own timeout kept a full run of 18 sources going for 54 minutes.
+ * Sources these bounds skip are left to the next run.
+ */
+interface SyncSourceLimits {
+  /** Epoch ms after which no further source starts (`run_deadline`). */
+  deadlineAt?: number | undefined;
+  /** After a ccusage command times out, start no further source (`runner_timed_out`). */
+  stopAfterTimeout?: boolean | undefined;
+}
+
 interface SyncProgramRuntime {
+  now?: (() => number) | undefined;
   runDailyReport?: typeof runCcusageDailyReport | undefined;
   runSessionReport?: typeof runCcusageSessionReport | undefined;
 }
 
 interface ResolveSyncAuthOptions {
   json: boolean;
+  /** How to retry a failed `/me` (default: `ME_RETRY_POLICY`, one quick retry). */
+  loginCheckRetry?: ApiRetryPolicy | undefined;
   showStoredLoginSpinner?: boolean | undefined;
   storedLoginSuccessMessage?: ((user: AuthUser) => string) | string | undefined;
 }
+
+/** What a failed login check ran into, for `--json` and the service log. */
+type LoginCheckFailure = ApiFailureDetail & { attempts: number };
 
 type AuthenticatedCliConfig = CliConfig & { token: string };
 
@@ -147,15 +321,37 @@ type SyncSourceSummary = SourceSummary & { sessions: number | null };
 
 interface SyncSourceIssue {
   code: CcusageRunErrorCode;
+  /**
+   * The end of ccusage's stderr (`stderrTail`); without any, how the runner ended (`ccusageRunDiagnostic`:
+   * `bun.cmd could not be started (EINVAL)`, `npx.cmd exited with code 1`).
+   */
+  detail?: string | undefined;
   message: string;
   report: CcusageReportKind;
 }
 
+interface SyncSourceFailure {
+  issue: SyncSourceIssue;
+  source: UsageSource;
+}
+
+/**
+ * `unchanged` and `cooldown` only come from scheduled cadence plans;
+ * `runner_timed_out` and `run_deadline` from `SyncSourceLimits`.
+ */
+type SyncSkipReason = "cooldown" | "no_data" | "run_deadline" | "runner_timed_out" | "unchanged";
+
 type SyncSourceResult =
-  | { source: string; status: "failed"; summary: null; issue: SyncSourceIssue }
-  | { source: string; status: "partial"; summary: SyncSourceSummary; issue: SyncSourceIssue }
-  | { source: string; status: "skipped"; summary: null; reason: "no_data" }
-  | { source: string; status: "synced"; summary: SyncSourceSummary };
+  | { source: UsageSource; status: "failed"; summary: null; issue: SyncSourceIssue }
+  | { source: UsageSource; status: "partial"; summary: SyncSourceSummary; issue: SyncSourceIssue }
+  | { source: UsageSource; status: "skipped"; summary: null; reason: SyncSkipReason }
+  | { source: UsageSource; status: "synced"; summary: SyncSourceSummary };
+
+/** Wall time of each ccusage report a source ran. */
+interface SyncSourceTimings {
+  dailyMs?: number | undefined;
+  sessionMs?: number | undefined;
+}
 
 type SyncStatus = "error" | "ok" | "partial";
 
@@ -166,6 +362,7 @@ interface SyncResult {
   sourceResults: SyncSourceResult[];
   sources: Record<string, SyncSourceSummary | null>;
   status: SyncStatus;
+  timings?: Partial<Record<UsageSource, SyncSourceTimings>> | undefined;
   upserted?: number | undefined;
 }
 
@@ -196,13 +393,8 @@ interface UploadUsageReportsOptions {
   uploadPolicy?: UploadRetryPolicy | undefined;
 }
 
-interface UploadRetryPolicy {
-  attempts: number;
-  backoffMs: readonly number[];
-  jitterRatio: number;
-  random?: (() => number) | undefined;
-  timeoutMs: number;
-}
+/** Every failed upload attempt is retried; see `withApiRetry`. */
+type UploadRetryPolicy = Omit<ApiRetryPolicy, "retryable">;
 
 function syncEffect(options: SyncOptions) {
   return humanFrame(
@@ -214,13 +406,32 @@ function syncEffect(options: SyncOptions) {
 
       if (options.json) {
         yield* writeJson(syncJsonPayload(result));
+      } else if (!shouldRenderInlineSync(options)) {
+        yield* Effect.sync(() => {
+          console.log("");
+          console.log(renderSyncTable(result.sourceResults));
+          console.log("");
+        });
+      }
+
+      // Every source failed: exit non-zero. The rendered failure doubles as
+      // the summary line, after the per-source rows / JSON payload.
+      if (result.status === "error") {
+        const failures = failedSyncSources(result.sourceResults);
+        return yield* Effect.fail(
+          new SyncSourcesFailedError({
+            failures,
+            withoutLogs: yield* sourcesWithoutLogs(failures.map((failure) => failure.source)),
+          }),
+        );
+      }
+
+      if (options.json) {
         return;
       }
 
       if (shouldRenderInlineSync(options)) {
-        if (result.status === "error") {
-          yield* humanLog("error", "No usage synced; source collection failed", options);
-        } else if (result.rows === 0) {
+        if (result.rows === 0) {
           yield* humanLog("info", "Nothing to sync", options);
         } else if (result.dryRun) {
           yield* humanLog("success", "Dry run complete; nothing pushed", options);
@@ -229,12 +440,7 @@ function syncEffect(options: SyncOptions) {
         }
       } else {
         yield* Effect.sync(() => {
-          console.log("");
-          console.log(renderSyncTable(result.sourceResults));
-          console.log("");
-          if (result.status === "error") {
-            console.error("No usage synced; source collection failed");
-          } else if (result.rows === 0) {
+          if (result.rows === 0) {
             console.log("Nothing to sync");
           } else if (result.dryRun) {
             console.log("Dry run complete; nothing pushed");
@@ -255,6 +461,11 @@ function syncProgram(options: SyncProgramOptions, runtime: SyncProgramRuntime = 
   return Effect.gen(function* () {
     const runDailyReport = runtime.runDailyReport ?? runCcusageDailyReport;
     const runSessionReport = runtime.runSessionReport ?? runCcusageSessionReport;
+    const now = runtime.now ?? Date.now;
+    if (options.since !== undefined && !isDateKey(options.since)) {
+      return yield* Effect.fail(new InvalidSinceError({ value: options.since }));
+    }
+
     const requested = options.sources?.split(",") ?? DEFAULT_SOURCE_NAMES;
     const { invalid, sources } = resolveSources(requested);
     if (invalid.length > 0) {
@@ -269,17 +480,62 @@ function syncProgram(options: SyncProgramOptions, runtime: SyncProgramRuntime = 
     const rawReports: RawUsageReportInput[] = [];
     const sourceSummaries: Record<string, SyncSourceSummary | null> = {};
     const sourceResults: SyncSourceResult[] = [];
+    const sourceStats: SourceUsageStatsInput[] = [];
+    const timings: Partial<Record<UsageSource, SyncSourceTimings>> = {};
     const renderInlineResults = shouldRenderInlineSync(options);
+    const limits = options.sourceLimits;
+    let timedOut = false;
     for (const source of sources) {
+      const plan: SyncSourcePlan = options.sourcePlans?.[source.source] ?? {
+        knownSessions: null,
+        mode: "run",
+        sessions: options.since === undefined ? "full" : "window",
+        since: options.since,
+      };
+      if (plan.mode === "skip") {
+        const result = {
+          reason: plan.reason,
+          source: source.source,
+          status: "skipped" as const,
+          summary: null,
+        };
+        sourceSummaries[source.source] = null;
+        sourceResults.push(result);
+        continue;
+      }
+
+      const limitReason: SyncSkipReason | undefined =
+        limits?.stopAfterTimeout === true && timedOut
+          ? "runner_timed_out"
+          : limits?.deadlineAt !== undefined && now() >= limits.deadlineAt
+            ? "run_deadline"
+            : undefined;
+      if (limitReason !== undefined) {
+        const result = {
+          reason: limitReason,
+          source: source.source,
+          status: "skipped" as const,
+          summary: null,
+        };
+        sourceSummaries[source.source] = null;
+        sourceResults.push(result);
+        continue;
+      }
+
       const spinner = yield* humanSpinner(`Syncing ${source.source}`, options);
-      const dailyResult = yield* runDailyReport(source, { since: options.since }).pipe(
+      const sourceTimings: SyncSourceTimings = {};
+      timings[source.source] = sourceTimings;
+      const dailyStartedAt = Date.now();
+      const dailyResult = yield* runDailyReport(source, { since: plan.since }).pipe(
         Effect.match({
           onFailure: (error) => ({ error, _tag: "failure" as const }),
           onSuccess: (report) => ({ report, _tag: "success" as const }),
         }),
       );
+      sourceTimings.dailyMs = Date.now() - dailyStartedAt;
 
       if (dailyResult._tag === "failure") {
+        timedOut ||= dailyResult.error.code === "command_timed_out";
         const result = {
           issue: syncSourceIssue(dailyResult.error),
           source: source.source,
@@ -310,20 +566,33 @@ function syncProgram(options: SyncProgramOptions, runtime: SyncProgramRuntime = 
 
       const sourceRows = aggregateDays(source.source, dailyReport.daily);
       rawReports.push({
-        command: dailyCcusageCommand(source, { since: options.since }),
+        command: dailyCcusageCommand(source, { since: plan.since }),
         payload: dailyReport,
         reportKind: "daily",
         source: source.source,
       });
 
-      const sessionResult = yield* runSessionReport(source, { since: options.since }).pipe(
-        Effect.match({
-          onFailure: (error) => ({ error, _tag: "failure" as const }),
-          onSuccess: (report) => ({ report, _tag: "success" as const }),
-        }),
-      );
+      const sessionResult =
+        plan.sessions === "reuse"
+          ? { count: plan.knownSessions, _tag: "reused" as const }
+          : yield* runTimedSessionReport(
+              runSessionReport,
+              source,
+              plan.sessions === "full" ? undefined : plan.since,
+              sourceTimings,
+            );
+      timedOut ||=
+        sessionResult._tag === "failure" && sessionResult.error.code === "command_timed_out";
       const sessionCount =
-        sessionResult._tag === "success" ? sessionResult.report.sessions.length : null;
+        sessionResult._tag === "reused"
+          ? sessionResult.count
+          : sessionResult._tag === "success"
+            ? sessionResult.report.sessions.length
+            : null;
+      // Only a full-history count may replace the server's lifetime count.
+      if (plan.sessions === "full" && sessionCount !== null) {
+        sourceStats.push({ sessionCount, source: source.source });
+      }
       const summary = { ...summarize(sourceRows), sessions: sessionCount };
       const result: SyncSourceResult =
         sessionResult._tag === "failure"
@@ -357,6 +626,7 @@ function syncProgram(options: SyncProgramOptions, runtime: SyncProgramRuntime = 
         sourceResults,
         sources: sourceSummaries,
         status,
+        timings,
       };
     }
 
@@ -374,6 +644,7 @@ function syncProgram(options: SyncProgramOptions, runtime: SyncProgramRuntime = 
         sourceResults,
         sources: sourceSummaries,
         status,
+        timings,
       };
     }
 
@@ -382,7 +653,7 @@ function syncProgram(options: SyncProgramOptions, runtime: SyncProgramRuntime = 
       device,
       options,
       rawReports,
-      sourceStats: options.since === undefined ? sourceStatsForSync(sourceResults) : undefined,
+      sourceStats: sourceStats.length === 0 ? undefined : sourceStats,
       uploadPolicy: options.uploadPolicy,
     });
     upserted = response.upserted;
@@ -394,8 +665,31 @@ function syncProgram(options: SyncProgramOptions, runtime: SyncProgramRuntime = 
       sourceResults,
       sources: sourceSummaries,
       status,
+      timings,
       upserted,
     };
+  });
+}
+
+function runTimedSessionReport(
+  runSessionReport: typeof runCcusageSessionReport,
+  source: Parameters<typeof runCcusageSessionReport>[0],
+  since: string | undefined,
+  timings: SyncSourceTimings,
+) {
+  return Effect.suspend(() => {
+    const startedAt = Date.now();
+    return runSessionReport(source, { since }).pipe(
+      Effect.match({
+        onFailure: (error) => ({ error, _tag: "failure" as const }),
+        onSuccess: (report) => ({ report, _tag: "success" as const }),
+      }),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          timings.sessionMs = Date.now() - startedAt;
+        }),
+      ),
+    );
   });
 }
 
@@ -432,55 +726,41 @@ function uploadUsageReportsOnce(
       },
     });
 
+  // A server that accepts the connection and never answers must not hang
+  // the command: one attempt, bounded like each scheduled attempt.
   if (uploadPolicy === undefined) {
-    return upload();
+    return withApiTimeout(upload(), USAGE_UPLOAD_TIMEOUT_MS);
   }
 
-  return uploadWithRetry(upload, uploadPolicy);
+  return withApiRetry(upload, uploadPolicy).pipe(Effect.mapError((failure) => failure.cause));
 }
 
-function uploadWithRetry<A, E, R>(
-  upload: () => Effect.Effect<A, E, R>,
-  policy: UploadRetryPolicy,
-): Effect.Effect<A, unknown, R | ClockService> {
-  return Effect.gen(function* () {
-    const clock = yield* Effect.service(ClockService);
-    const attempts = Math.max(1, Math.floor(policy.attempts));
-    let lastError: unknown;
+function failedSyncSources(results: readonly SyncSourceResult[]): SyncSourceFailure[] {
+  return results.flatMap((result) =>
+    result.status === "failed" ? [{ issue: result.issue, source: result.source }] : [],
+  );
+}
 
-    for (let attempt = 1; attempt <= attempts; attempt += 1) {
-      const result = yield* upload().pipe(
-        Effect.timeout(`${Math.max(1, policy.timeoutMs)} millis`),
-        Effect.match({
-          onFailure: (cause) => ({ cause, _tag: "failure" as const }),
-          onSuccess: (value) => ({ value, _tag: "success" as const }),
-        }),
-      );
-
-      if (result._tag === "success") {
-        return result.value;
-      }
-
-      lastError = result.cause;
-      if (attempt < attempts) {
-        const backoffMs = retryBackoffMs(policy, attempt);
-        if (backoffMs > 0) {
-          yield* clock.sleep(backoffMs).pipe(Effect.catch(() => Effect.void));
-        }
+/**
+ * The sources whose agent left no logs on this machine: no file where
+ * ccusage would look (the same roots the scheduled cadence fingerprints). A
+ * source whose roots cannot be told counts as having logs.
+ */
+function sourcesWithoutLogs(
+  sources: readonly UsageSource[],
+  options: LogRootOptions = {},
+): Effect.Effect<UsageSource[]> {
+  return Effect.promise(async () => {
+    const without: UsageSource[] = [];
+    for (const source of sources) {
+      const fingerprint = await fingerprintSource(source, options).catch(() => null);
+      if (fingerprint !== null && fingerprint.files === 0) {
+        without.push(source);
       }
     }
 
-    return yield* Effect.fail(lastError);
+    return without;
   });
-}
-
-function retryBackoffMs(policy: UploadRetryPolicy, attempt: number): number {
-  const base = policy.backoffMs[Math.max(0, attempt - 1)] ?? policy.backoffMs.at(-1) ?? 0;
-  const jitterRatio = Math.max(0, policy.jitterRatio);
-  const random = policy.random ?? Math.random;
-  const jitter = jitterRatio === 0 ? 1 : 1 - jitterRatio + random() * jitterRatio * 2;
-
-  return Math.max(0, Math.round(base * jitter));
 }
 
 function syncJsonPayload(result: SyncResult) {
@@ -503,18 +783,6 @@ function syncJsonPayload(result: SyncResult) {
   };
 }
 
-function sourceStatsForSync(
-  results: readonly SyncSourceResult[],
-): SourceUsageStatsInput[] | undefined {
-  const stats = results.flatMap((result) =>
-    result.summary?.sessions === undefined || result.summary.sessions === null
-      ? []
-      : [{ sessionCount: result.summary.sessions, source: result.source }],
-  );
-
-  return stats.length === 0 ? undefined : stats;
-}
-
 function syncSourceIssue(error: CcusageRunError): SyncSourceIssue {
   const message =
     error.code === "command_not_found"
@@ -527,7 +795,13 @@ function syncSourceIssue(error: CcusageRunError): SyncSourceIssue {
             ? "ccusage returned invalid JSON"
             : `ccusage returned an invalid ${error.report} report`;
 
-  return { code: error.code, message, report: error.report };
+  const detail = error.stderr ?? ccusageRunDiagnostic(error);
+  return {
+    code: error.code,
+    ...(detail === undefined ? {} : { detail }),
+    message,
+    report: error.report,
+  };
 }
 
 function syncStatusForSources(results: readonly SyncSourceResult[], rows: number): SyncStatus {
@@ -579,7 +853,7 @@ function renderSyncSourceResult(result: SyncSourceResult): string {
   }
 
   if (result.status === "skipped") {
-    return `${result.source} skipped (no data)`;
+    return `${result.source} skipped (${syncSkipReasonLabel(result.reason)})`;
   }
 
   const sessions =
@@ -599,6 +873,21 @@ function renderSyncSourceResult(result: SyncSourceResult): string {
   }
 
   return row.join(" - ");
+}
+
+function syncSkipReasonLabel(reason: SyncSkipReason): string {
+  switch (reason) {
+    case "cooldown":
+      return "cooling down";
+    case "no_data":
+      return "no data";
+    case "run_deadline":
+      return "run time limit reached";
+    case "runner_timed_out":
+      return "stopped after a ccusage timeout";
+    case "unchanged":
+      return "logs unchanged";
+  }
 }
 
 function renderSyncTable(
@@ -729,6 +1018,7 @@ function resolveSyncAuth(options: ResolveSyncAuthOptions) {
     });
     const validated = yield* validateCurrentLogin(client, {
       ...options,
+      retry: options.loginCheckRetry ?? ME_RETRY_POLICY,
       showSpinner: options.showStoredLoginSpinner === true,
       successMessage: options.storedLoginSuccessMessage,
     });
@@ -743,7 +1033,9 @@ function resolveSyncAuth(options: ResolveSyncAuthOptions) {
     }
 
     if (validated._tag === "failed") {
-      return yield* Effect.fail(new SyncAuthValidationError({ cause: validated.cause }));
+      return yield* Effect.fail(
+        new SyncAuthValidationError({ attempts: validated.attempts, cause: validated.cause }),
+      );
     }
 
     if (options.json || envTokenActive) {
@@ -786,13 +1078,16 @@ function formatCount(value: number, noun: string): string {
 }
 
 export {
+  describeSyncSourcesFailure,
+  failedSyncSources,
   formatSyncUsd,
+  InvalidSinceError,
   openProfileIfAvailable,
   renderSyncSuccess,
   renderSyncSourceResult,
   renderSyncTable,
   resolveSyncAuth,
-  sourceStatsForSync,
+  sourcesWithoutLogs,
   syncSourceIssue,
   syncStatusForSources,
   syncCommand,
@@ -801,19 +1096,24 @@ export {
   syncProgram,
   SyncAuthValidationError,
   SyncPushError,
+  SyncSourcesFailedError,
   UnknownSourceError,
   uploadUsageReports,
 };
 
 export type {
+  LoginCheckFailure,
   ResolveSyncAuthOptions,
+  SyncSkipReason,
   SyncAuth,
   SyncOptions,
   SyncResult,
   SyncProgramRuntime,
   SyncSourceIssue,
+  SyncSourceLimits,
   SyncSourceResult,
   SyncSourceSummary,
+  SyncSourceTimings,
   SyncStatus,
   UploadRetryPolicy,
 };

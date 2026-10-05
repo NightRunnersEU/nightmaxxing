@@ -3,12 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc --project tsconfig.json"
+    "build": "vp build"
   },
   "dependencies": {
-    "@base-ui-components/react": "catalog:",
+    "@base-ui/react": "catalog:",
     "@fontsource/geist-mono": "catalog:",
     "@fontsource/geist-sans": "catalog:",
     "@nightmaxxing/api-contract": "workspace:*",
@@ -21,17 +19,17 @@
     "effect": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "tailwind-merge": "^3.6.0",
-    "zod": "catalog:"
+    "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "happy-dom": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   }
 }

@@ -1,130 +1,21 @@
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
-import {
-  AdminUserNotFound,
-  Forbidden,
-  type AdminUsersResponse,
-  type ShadowBanUserResponse,
-} from "@nightmaxxing/api-contract";
+import { AdminUserNotFound, Forbidden, UserId } from "@nightmaxxing/api-contract";
 
-import {
-  AdminRepository,
-  adminDeviceRepairReason,
-  adminDeviceStatus,
-  latestReleaseFromRegistryBody,
-  makeAdminService,
-  type AdminDeviceSnapshot,
-  type AdminRepositoryShape,
-  type AdminUserSnapshot,
-  type LatestCliRelease,
-} from "./service";
+import { AppConfig } from "../config";
+import { adminDeviceRepairReason, type AdminUserSnapshot } from "./fleet";
+import { NpmRegistry, type LatestCliRelease } from "./npm-registry";
+import { AdminRepository, makeAdminService, type AdminRepositoryShape } from "./service";
+import { device, latestRelease, now, snapshot } from "./test-fixtures";
 
-const now = new Date("2026-06-19T20:00:00.000Z");
-const latestRelease: LatestCliRelease = {
-  publishedAt: "2026-06-19T19:00:00.000Z",
-  version: "0.5.4",
-  versions: {
-    alpha: "0.5.5-alpha.1",
-    beta: null,
-    latest: "0.5.4",
-    rc: null,
-  },
-};
-
-interface TestAdminService {
-  listUsers(userId: string): Effect.Effect<typeof AdminUsersResponse.Type, Forbidden>;
-  shadowBanUser(
-    adminUserId: string,
-    targetUserId: string,
-  ): Effect.Effect<typeof ShadowBanUserResponse.Type, AdminUserNotFound | Forbidden>;
-  shadowUnbanUser(
-    adminUserId: string,
-    targetUserId: string,
-  ): Effect.Effect<typeof ShadowBanUserResponse.Type, AdminUserNotFound | Forbidden>;
-}
-
-function device(input: Partial<AdminDeviceSnapshot> = {}): AdminDeviceSnapshot {
-  return {
-    arch: "arm64",
-    createdAt: "2026-06-19T18:00:00.000Z",
-    id: "device_123",
-    lastCheckInAt: null,
-    lastSyncAt: "2026-06-19T19:30:00.000Z",
-    name: "Mac.localdomain",
-    platform: "darwin",
-    serviceAutoUpdateAttemptedAt: null,
-    serviceAutoUpdateCompletedAt: null,
-    serviceAutoUpdateCurrentVersion: null,
-    serviceAutoUpdateEnabled: null,
-    serviceAutoUpdateError: null,
-    serviceAutoUpdateInstalledVersion: null,
-    serviceAutoUpdateLatestVersion: null,
-    serviceAutoUpdateManager: null,
-    serviceAutoUpdateReason: null,
-    serviceAutoUpdateStatus: null,
-    serviceBackend: null,
-    serviceError: null,
-    serviceReloadRequired: null,
-    serviceRepairAttemptedAt: null,
-    serviceRepairCompletedAt: null,
-    serviceRepairError: null,
-    serviceRepairReason: null,
-    serviceRepairStatus: null,
-    serviceRunnerTarget: null,
-    serviceRunnerVersion: null,
-    serviceSchedulerActive: null,
-    serviceStatus: null,
-    serviceTemplateVersion: null,
-    version: "0.5.4",
-    ...input,
-  };
-}
-
-function snapshot(input: Partial<AdminUserSnapshot> = {}): AdminUserSnapshot {
-  return {
-    accounts: [
-      {
-        email: "admin@example.com",
-        emailVerified: true,
-        login: "alex",
-        provider: "github",
-      },
-    ],
-    deviceUsage: [
-      {
-        activeDays: 12,
-        deviceId: "device_123",
-        lastUsageDate: "2026-06-19",
-        sources: ["codex"],
-        totalSpendUsd: 34.56,
-        totalTokens: 123_456,
-      },
-    ],
-    devices: [device()],
-    sources: ["codex"],
-    tokens: [
-      { deviceId: "device_123", lastUsedAt: "2026-06-19T19:31:00.000Z", revokedAt: null },
-      { deviceId: "device_123", lastUsedAt: null, revokedAt: "2026-06-18T00:00:00.000Z" },
-    ],
-    usage: {
-      activeDays: 12,
-      lastUsageDate: "2026-06-19",
-      totalSpendUsd: 34.56,
-      totalTokens: 123_456,
-    },
-    user: {
-      avatarUrl: null,
-      createdAt: "2026-06-18T00:00:00.000Z",
-      id: "user_123",
-      login: "pondorasti",
-      name: "Alexandru",
-      updatedAt: "2026-06-19T00:00:00.000Z",
-    },
-    ...input,
-    shadowBan: input.shadowBan ?? null,
-  };
-}
+const appConfig = AppConfig.of({
+  adminEmails: ["alexandru@851.sh", "pondorasti@gmail.com"],
+  apiWorkerName: "nightmaxxing-api",
+  github: { clientId: "github-client", clientSecret: "github-secret" },
+  google: { clientId: "google-client", clientSecret: "google-secret" },
+  productName: "Nightmaxxing",
+});
 
 function makeRepository(options: {
   allowedEmails?: readonly string[] | undefined;
@@ -136,7 +27,8 @@ function makeRepository(options: {
   const allowedEmails = new Set(options.allowedEmails ?? []);
 
   return {
-    hasVerifiedEmail: (_userId, email) => Effect.succeed(allowedEmails.has(email)),
+    hasAnyVerifiedEmail: (_userId, emails) =>
+      Effect.succeed(emails.some((email) => allowedEmails.has(email))),
     listUserSnapshots: () => Effect.succeed(options.snapshots ?? [snapshot()]),
     setShadowBan: (input) => Effect.succeed(options.onSetShadowBan?.(input) ?? true),
   };
@@ -146,28 +38,30 @@ async function makeService(
   repository: AdminRepositoryShape,
   options: { latestCliRelease?: LatestCliRelease | undefined } = {},
 ) {
-  return (await Effect.runPromise(
-    makeAdminService({
-      fetchLatestCliRelease: () => Effect.succeed(options.latestCliRelease ?? latestRelease),
-      adminEmails: ["admin@example.com"],
-      now: () => now,
-    }).pipe(Effect.provideService(AdminRepository, repository)),
-  )) as unknown as TestAdminService;
+  return Effect.runPromise(
+    makeAdminService({ now: () => now }).pipe(
+      Effect.provideService(AdminRepository, repository),
+      Effect.provideService(AppConfig, appConfig),
+      Effect.provideService(NpmRegistry, {
+        latestCliRelease: Effect.succeed(options.latestCliRelease ?? latestRelease),
+      }),
+    ),
+  );
 }
 
 describe("AdminService.listUsers", () => {
   it("rejects signed-in users without the admin verified email", async () => {
     const service = await makeService(makeRepository({}));
 
-    await expect(Effect.runPromise(service.listUsers("user_123"))).rejects.toBeInstanceOf(
-      Forbidden,
-    );
+    await expect(
+      Effect.runPromise(service.listUsers(UserId.make("user_123"))),
+    ).rejects.toBeInstanceOf(Forbidden);
   });
 
   it("returns debug rows and summary counts for the admin user", async () => {
-    const service = await makeService(makeRepository({ allowedEmails: ["admin@example.com"] }));
+    const service = await makeService(makeRepository({ allowedEmails: ["alexandru@851.sh"] }));
 
-    const response = await Effect.runPromise(service.listUsers("user_123"));
+    const response = await Effect.runPromise(service.listUsers(UserId.make("user_123")));
 
     expect(response.summary).toEqual({
       healthy: 1,
@@ -187,7 +81,6 @@ describe("AdminService.listUsers", () => {
       latest: "0.5.4",
       rc: null,
     });
-    expect(response.rolloutGraceHours).toBe(2);
     expect(response.devices[0]).toMatchObject({
       activeDays: 12,
       activeTokenCount: 1,
@@ -201,9 +94,9 @@ describe("AdminService.listUsers", () => {
       latestCheckInAt: "2026-06-19T19:30:00.000Z",
       revokedTokenCount: 1,
       sources: ["codex"],
+      spendUsd: 34.56,
       status: "healthy",
       tokenCount: 2,
-      totalSpendUsd: 34.56,
       totalTokens: 123_456,
       updateBlockedReason: null,
       updateStatus: "current",
@@ -217,21 +110,21 @@ describe("AdminService.listUsers", () => {
       latestCheckInAt: "2026-06-19T19:30:00.000Z",
       revokedTokenCount: 1,
       status: "healthy",
-      verifiedEmails: ["admin@example.com"],
+      verifiedEmails: ["alexandru@851.sh"],
     });
   });
 
   it("counts outdated versions separately from health status", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         snapshots: [
           snapshot({
             devices: [device({ version: "0.5.3" })],
             user: {
               avatarUrl: null,
               createdAt: "2026-06-18T00:00:00.000Z",
-              id: "user_1",
+              id: UserId.make("user_1"),
               login: "active-old",
               name: null,
               updatedAt: "2026-06-19T00:00:00.000Z",
@@ -242,7 +135,7 @@ describe("AdminService.listUsers", () => {
             user: {
               avatarUrl: null,
               createdAt: "2026-06-18T00:00:00.000Z",
-              id: "user_2",
+              id: UserId.make("user_2"),
               login: "stale-old",
               name: null,
               updatedAt: "2026-06-19T00:00:00.000Z",
@@ -252,7 +145,7 @@ describe("AdminService.listUsers", () => {
       }),
     );
 
-    const response = await Effect.runPromise(service.listUsers("user_123"));
+    const response = await Effect.runPromise(service.listUsers(UserId.make("user_123")));
 
     expect(response.summary).toMatchObject({
       healthy: 1,
@@ -272,12 +165,12 @@ describe("AdminService.listUsers", () => {
   it("does not mark a current alpha client outdated against stable latest", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         snapshots: [snapshot({ devices: [device({ version: "0.5.5-alpha.1" })] })],
       }),
     );
 
-    const response = await Effect.runPromise(service.listUsers("user_123"));
+    const response = await Effect.runPromise(service.listUsers(UserId.make("user_123")));
 
     expect(response.summary).toMatchObject({
       outdated: 0,
@@ -293,12 +186,12 @@ describe("AdminService.listUsers", () => {
   it("marks an alpha client outdated only against the alpha dist-tag", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         snapshots: [snapshot({ devices: [device({ version: "0.5.5-alpha.0" })] })],
       }),
     );
 
-    const response = await Effect.runPromise(service.listUsers("user_123"));
+    const response = await Effect.runPromise(service.listUsers(UserId.make("user_123")));
 
     expect(response.summary).toMatchObject({
       outdated: 1,
@@ -313,7 +206,7 @@ describe("AdminService.listUsers", () => {
   it("treats alpha update status as unknown when npm has no alpha dist-tag", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         snapshots: [snapshot({ devices: [device({ version: "0.5.5-alpha.0" })] })],
       }),
       {
@@ -324,7 +217,7 @@ describe("AdminService.listUsers", () => {
       },
     );
 
-    const response = await Effect.runPromise(service.listUsers("user_123"));
+    const response = await Effect.runPromise(service.listUsers(UserId.make("user_123")));
 
     expect(response.summary).toMatchObject({
       outdated: 0,
@@ -340,7 +233,7 @@ describe("AdminService.listUsers", () => {
   it("only marks update-blocked when the device is outdated on its own channel", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         snapshots: [
           snapshot({
             devices: [
@@ -362,7 +255,7 @@ describe("AdminService.listUsers", () => {
       }),
     );
 
-    const response = await Effect.runPromise(service.listUsers("user_123"));
+    const response = await Effect.runPromise(service.listUsers(UserId.make("user_123")));
     const currentAlpha = response.devices.find((row) => row.device.id === "current-alpha");
     const oldAlpha = response.devices.find((row) => row.device.id === "old-alpha");
 
@@ -385,7 +278,7 @@ describe("AdminService.listUsers", () => {
   it("keeps multiple devices for one user visible as separate fleet rows", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         snapshots: [
           snapshot({
             deviceUsage: [
@@ -449,7 +342,7 @@ describe("AdminService.listUsers", () => {
             user: {
               avatarUrl: null,
               createdAt: "2026-06-18T00:00:00.000Z",
-              id: "user_joel",
+              id: UserId.make("user_joel"),
               login: "joelbqz",
               name: null,
               updatedAt: "2026-06-19T00:00:00.000Z",
@@ -459,7 +352,7 @@ describe("AdminService.listUsers", () => {
       }),
     );
 
-    const response = await Effect.runPromise(service.listUsers("user_123"));
+    const response = await Effect.runPromise(service.listUsers(UserId.make("user_123")));
     const vps = response.devices.find((row) => row.device.id === "vps-6b1bc496");
     const mac = response.devices.find((row) => row.device.id === "mac-joel");
 
@@ -488,7 +381,7 @@ describe("AdminService.listUsers", () => {
   it("separates update-blocked from machine health", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         snapshots: [
           snapshot({
             devices: [
@@ -511,7 +404,7 @@ describe("AdminService.listUsers", () => {
       }),
     );
 
-    const response = await Effect.runPromise(service.listUsers("user_123"));
+    const response = await Effect.runPromise(service.listUsers(UserId.make("user_123")));
 
     expect(response.summary).toMatchObject({
       healthy: 1,
@@ -528,12 +421,12 @@ describe("AdminService.listUsers", () => {
   it("does not mark old clients update-blocked when auto-update telemetry is absent", async () => {
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         snapshots: [snapshot({ devices: [device({ version: "0.5.3" })] })],
       }),
     );
 
-    const response = await Effect.runPromise(service.listUsers("user_123"));
+    const response = await Effect.runPromise(service.listUsers(UserId.make("user_123")));
 
     expect(response.summary).toMatchObject({
       outdated: 1,
@@ -547,9 +440,11 @@ describe("AdminService.listUsers", () => {
   });
 
   it("allows the pondorasti Gmail address as an internal admin email", async () => {
-    const service = await makeService(makeRepository({ allowedEmails: ["admin@example.com"] }));
+    const service = await makeService(makeRepository({ allowedEmails: ["pondorasti@gmail.com"] }));
 
-    await expect(Effect.runPromise(service.listUsers("user_123"))).resolves.toMatchObject({
+    await expect(
+      Effect.runPromise(service.listUsers(UserId.make("user_123"))),
+    ).resolves.toMatchObject({
       summary: { totalUsers: 1 },
     });
   });
@@ -564,7 +459,7 @@ describe("AdminService shadow bans", () => {
     }> = [];
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         onSetShadowBan: (input) => {
           updates.push(input);
           return true;
@@ -572,7 +467,9 @@ describe("AdminService shadow bans", () => {
       }),
     );
 
-    const response = await Effect.runPromise(service.shadowBanUser("admin_123", "user_456"));
+    const response = await Effect.runPromise(
+      service.shadowBanUser(UserId.make("admin_123"), UserId.make("user_456")),
+    );
 
     expect(response).toEqual({
       shadowBan: {
@@ -594,7 +491,7 @@ describe("AdminService shadow bans", () => {
     const updates: Parameters<AdminRepositoryShape["setShadowBan"]>[0][] = [];
     const service = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         onSetShadowBan: (input) => {
           updates.push(input);
           return true;
@@ -603,7 +500,7 @@ describe("AdminService shadow bans", () => {
     );
 
     await expect(
-      Effect.runPromise(service.shadowUnbanUser("admin_123", "user_456")),
+      Effect.runPromise(service.shadowUnbanUser(UserId.make("admin_123"), UserId.make("user_456"))),
     ).resolves.toEqual({ shadowBan: null, userId: "user_456" });
     expect(updates).toEqual([{ at: null, byUserId: null, userId: "user_456" }]);
   });
@@ -611,117 +508,17 @@ describe("AdminService shadow bans", () => {
   it("rejects non-admins and reports missing target users", async () => {
     const nonAdmin = await makeService(makeRepository({}));
     await expect(
-      Effect.runPromise(nonAdmin.shadowBanUser("user_123", "user_456")),
+      Effect.runPromise(nonAdmin.shadowBanUser(UserId.make("user_123"), UserId.make("user_456"))),
     ).rejects.toBeInstanceOf(Forbidden);
 
     const admin = await makeService(
       makeRepository({
-        allowedEmails: ["admin@example.com"],
+        allowedEmails: ["alexandru@851.sh"],
         onSetShadowBan: () => false,
       }),
     );
     await expect(
-      Effect.runPromise(admin.shadowUnbanUser("admin_123", "missing")),
+      Effect.runPromise(admin.shadowUnbanUser(UserId.make("admin_123"), UserId.make("missing"))),
     ).rejects.toBeInstanceOf(AdminUserNotFound);
-  });
-});
-
-describe("adminDeviceStatus", () => {
-  it("classifies healthy, repair-needed, stale, and unknown devices", () => {
-    expect(adminDeviceStatus(device(), latestRelease, now)).toBe("healthy");
-    expect(
-      adminDeviceStatus(
-        device({
-          lastCheckInAt: "2026-06-19T19:30:00.000Z",
-          serviceSchedulerActive: false,
-          serviceStatus: "failure",
-        }),
-        latestRelease,
-        now,
-      ),
-    ).toBe("repair-needed");
-    expect(
-      adminDeviceStatus(
-        device({ lastCheckInAt: "2026-06-19T19:30:00.000Z", serviceReloadRequired: true }),
-        latestRelease,
-        now,
-      ),
-    ).toBe("repair-needed");
-    expect(adminDeviceStatus(device({ version: "0.5.3" }), latestRelease, now)).toBe("healthy");
-    expect(
-      adminDeviceStatus(
-        device({ version: "0.5.3" }),
-        { ...latestRelease, publishedAt: "2026-06-19T17:59:59.000Z" },
-        now,
-      ),
-    ).toBe("healthy");
-    expect(
-      adminDeviceStatus(device({ lastSyncAt: "2026-06-19T12:00:00.000Z" }), latestRelease, now),
-    ).toBe("stale");
-    expect(
-      adminDeviceStatus(
-        device({
-          lastCheckInAt: "2026-06-19T12:00:00.000Z",
-          lastSyncAt: "2026-06-19T19:30:00.000Z",
-        }),
-        latestRelease,
-        now,
-      ),
-    ).toBe("healthy");
-    expect(adminDeviceStatus(device({ arch: null, version: null }), latestRelease, now)).toBe(
-      "unknown",
-    );
-    expect(adminDeviceStatus(device({ lastSyncAt: null }), latestRelease, now)).toBe("unknown");
-  });
-});
-
-describe("adminDeviceRepairReason", () => {
-  it("explains why a device needs repair", () => {
-    expect(adminDeviceRepairReason(device({ serviceStatus: "failure" }))).toBe("service-failure");
-    expect(adminDeviceRepairReason(device({ serviceSchedulerActive: false }))).toBe(
-      "scheduler-inactive",
-    );
-    expect(adminDeviceRepairReason(device({ serviceReloadRequired: true }))).toBe(
-      "reload-required",
-    );
-    expect(
-      adminDeviceRepairReason(
-        device({
-          serviceRepairReason: "auto-updated",
-          serviceRepairStatus: "scheduled",
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      adminDeviceRepairReason(
-        device({
-          serviceRepairReason: "auto-updated",
-          serviceRepairStatus: "success",
-        }),
-      ),
-    ).toBeNull();
-  });
-});
-
-describe("latestReleaseFromRegistryBody", () => {
-  it("reads the latest dist tag and release timestamp from npm package metadata", () => {
-    expect(
-      latestReleaseFromRegistryBody({
-        "dist-tags": {
-          alpha: "0.5.5-alpha.1",
-          beta: "0.5.5-beta.1",
-          latest: "0.5.4",
-          rc: "0.5.5-rc.1",
-        },
-        time: { "0.5.4": "2026-06-19T19:00:00.000Z" },
-      }),
-    ).toEqual({
-      ...latestRelease,
-      versions: {
-        ...latestRelease.versions,
-        beta: "0.5.5-beta.1",
-        rc: "0.5.5-rc.1",
-      },
-    });
   });
 });

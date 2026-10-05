@@ -1,90 +1,121 @@
-import { Context } from "effect";
-import { Effect } from "effect";
-import { Option } from "effect";
+import { Context, Data, Effect, Option } from "effect";
 
-import { LoginCodeExpired, LoginCodeNotFound } from "@nightmaxxing/api-contract";
+import {
+  CliUpgradeRequired,
+  LoginCodeExpired,
+  LoginCodeNotFound,
+  type AuthUser,
+  type CliLoginPollInput,
+  type CliLoginPollResponse,
+  type CliLoginRequestSummary,
+  type CliLoginStartInput,
+  type CliLoginStartResponse,
+} from "@nightmaxxing/api-contract";
 import type { CliLoginRequest } from "@nightmaxxing/db";
 
 import type { DatabaseError } from "../database";
 import {
+  deriveDeviceId,
   generateCliToken,
+  generateDeviceCode,
   generateLoginCode,
   hashCliToken,
+  hashDeviceCode,
   normalizeLoginCode,
 } from "../auth/crypto";
-import type { CurrentUser } from "../auth/service";
+import { AuthRepository } from "../auth/service";
 
 /**
- * The device-code login flow: the CLI starts a request and polls its code;
- * a signed-in browser approves it, which registers the device and mints a
- * never-expiring CLI token. The raw token is parked on the request row
- * between approve and poll and the row is deleted on delivery — each code
- * hands out its token exactly once.
+ * The device-code login flow (RFC 8628 shaped):
+ *
+ * - start: the CLI gets a secret `deviceCode` (only its hash is stored) and
+ *   a short `userCode` it sends the user to the browser with.
+ * - approve: a signed-in user explicitly approves the userCode. One
+ *   conditional UPDATE flips `pending → approved`; nothing is minted yet.
+ * - poll: the CLI presents its deviceCode. One conditional DELETE claims
+ *   the approved row, and only the poller that got the row back mints the
+ *   never-expiring CLI token — delivered exactly once, never stored raw.
+ *
+ * Legacy: pre-device-code CLIs start without `flow` and poll by userCode.
+ * Those requests have no deviceCodeHash and are the only ones pollable by
+ * userCode; after LEGACY_LOGIN_SUNSET such starts are refused outright.
  */
 
 const LOGIN_REQUEST_TTL_MS = 10 * 60 * 1000;
 const POLL_INTERVAL_SECONDS = 2;
+const LEGACY_LOGIN_SUNSET = new Date("2027-11-01T00:00:00.000Z");
 
-interface StartInput {
-  deviceArch?: string | undefined;
-  deviceId: string;
-  deviceName: string;
-  devicePlatform: string;
-  deviceVersion?: string | undefined;
-}
+type StartInput = typeof CliLoginStartInput.Type;
 
-interface StartResult {
-  code: string;
-  expiresAt: string;
-  intervalSeconds: number;
-  verificationUri: string;
-}
+type StartResult = typeof CliLoginStartResponse.Type;
 
-type PollResult = { status: "pending" } | { status: "complete"; token: string; user: CurrentUser };
+type PollResult = typeof CliLoginPollResponse.Type;
+
+type LoginCodeError = LoginCodeExpired | LoginCodeNotFound;
 
 interface CliLoginServiceShape {
-  /** wwwOrigin derives from the request host (see cookieScopeFor) so dev
+  /** wwwOrigin derives from the request host (see deploymentForHost) so dev
    * and prod mint the right verification URL from one deploy. */
-  start(input: StartInput, wwwOrigin: string): Effect.Effect<StartResult, never, any>;
-  poll(code: string): Effect.Effect<PollResult, LoginCodeExpired | LoginCodeNotFound, any>;
-  approve(
-    user: CurrentUser,
-    code: string,
-  ): Effect.Effect<{ deviceName: string }, LoginCodeExpired | LoginCodeNotFound, any>;
+  start(input: StartInput, wwwOrigin: string): Effect.Effect<StartResult, CliUpgradeRequired>;
+  poll(input: CliLoginPollInput): Effect.Effect<PollResult, LoginCodeError>;
+  describe(code: string): Effect.Effect<CliLoginRequestSummary, LoginCodeError>;
+  approve(user: AuthUser, code: string): Effect.Effect<{ deviceName: string }, LoginCodeError>;
 }
 
 interface CliLoginRepositoryShape {
   insertRequest(input: {
     code: string;
+    createdAt: Date;
     deviceArch?: string | undefined;
+    deviceCodeHash: string | null;
     deviceId: string;
     deviceName: string;
     devicePlatform: string;
     deviceVersion?: string | undefined;
     expiresAt: Date;
     id: string;
-  }): Effect.Effect<void, DatabaseError, any>;
-  findRequest(code: string): Effect.Effect<Option.Option<CliLoginRequest>, DatabaseError, any>;
-  deleteRequest(id: string): Effect.Effect<void, DatabaseError, any>;
-  findRequestUser(userId: string): Effect.Effect<Option.Option<CurrentUser>, DatabaseError, any>;
-  /**
-   * One batch: upsert the device to the approving user, re-home the
-   * device's historical usage rows (account switch on a shared machine),
-   * insert the hashed CLI token, and park the raw token on the request row.
-   */
+  }): Effect.Effect<void, DatabaseError>;
+  findRequestByCode(code: string): Effect.Effect<Option.Option<CliLoginRequest>, DatabaseError>;
+  findRequestByDeviceCodeHash(
+    deviceCodeHash: string,
+  ): Effect.Effect<Option.Option<CliLoginRequest>, DatabaseError>;
+  /** `UPDATE … SET status='approved' WHERE id=? AND status='pending' AND
+   * expires_at > now RETURNING` — some() only for the approve that won. */
   approveRequest(input: {
+    now: Date;
+    requestId: string;
+    userId: string;
+  }): Effect.Effect<Option.Option<CliLoginRequest>, DatabaseError>;
+  /** `DELETE … WHERE id=? AND status='approved' AND expires_at > now
+   * RETURNING` — some() only for the poll that won. */
+  claimApprovedRequest(input: {
+    now: Date;
+    requestId: string;
+  }): Effect.Effect<Option.Option<CliLoginRequest>, DatabaseError>;
+  deleteRequest(id: string): Effect.Effect<void, DatabaseError>;
+  findDeviceOwner(deviceId: string): Effect.Effect<Option.Option<string>, DatabaseError>;
+  /**
+   * One batch: upsert the device for the user (never reassigning a device
+   * another user owns) and insert the hashed CLI token only if the device
+   * is the user's. Returns false when the ownership guard blocked it.
+   */
+  issueCliToken(input: {
     deviceArch: string | null;
     deviceId: string;
     deviceName: string;
     devicePlatform: string;
     deviceVersion: string | null;
-    rawToken: string;
-    requestId: string;
+    now: Date;
     tokenHash: string;
     tokenId: string;
     userId: string;
-  }): Effect.Effect<void, DatabaseError, any>;
+  }): Effect.Effect<boolean, DatabaseError>;
 }
+
+/** Defect: the resolved device was claimed by another user mid-poll. */
+class DeviceOwnershipConflict extends Data.TaggedError("DeviceOwnershipConflict")<{
+  readonly deviceId: string;
+}> {}
 
 class CliLoginService extends Context.Service<CliLoginService, CliLoginServiceShape>()(
   "@nightmaxxing/api/CliLoginService",
@@ -96,31 +127,107 @@ class CliLoginRepository extends Context.Service<CliLoginRepository, CliLoginRep
 
 const makeCliLoginService = Effect.fn("makeCliLoginService")(function* () {
   const repository = yield* CliLoginRepository;
+  const users = yield* AuthRepository;
 
-  const loadActiveRequest = Effect.fn("CliLoginService.loadActiveRequest")(function* (
-    rawCode: string,
+  const rejectExpired = Effect.fn("CliLoginService.rejectExpired")(function* (
+    request: CliLoginRequest,
   ) {
+    if (request.expiresAt.getTime() > Date.now()) {
+      return request;
+    }
+    yield* repository.deleteRequest(request.id).pipe(Effect.orDie);
+    return yield* Effect.fail(new LoginCodeExpired({ code: request.code }));
+  });
+
+  const loadByUserCode = Effect.fn("CliLoginService.loadByUserCode")(function* (rawCode: string) {
     const code = normalizeLoginCode(rawCode);
-    const request = yield* repository.findRequest(code).pipe(Effect.orDie);
+    const request = yield* repository.findRequestByCode(code).pipe(Effect.orDie);
     if (Option.isNone(request)) {
       return yield* Effect.fail(new LoginCodeNotFound({ code }));
     }
-    if (request.value.expiresAt.getTime() < Date.now()) {
-      yield* repository.deleteRequest(request.value.id).pipe(Effect.orDie);
-      return yield* Effect.fail(new LoginCodeExpired({ code }));
+
+    return yield* rejectExpired(request.value);
+  });
+
+  /** Poll lookup: by deviceCode hash, or by userCode for legacy rows only. */
+  const loadForPoll = Effect.fn("CliLoginService.loadForPoll")(function* (
+    input: CliLoginPollInput,
+  ) {
+    if ("deviceCode" in input) {
+      const deviceCodeHash = yield* hashDeviceCode(input.deviceCode);
+      const request = yield* repository
+        .findRequestByDeviceCodeHash(deviceCodeHash)
+        .pipe(Effect.orDie);
+      if (Option.isNone(request)) {
+        return yield* Effect.fail(new LoginCodeNotFound({ code: "" }));
+      }
+
+      return yield* rejectExpired(request.value);
     }
 
-    return request.value;
+    const code = normalizeLoginCode(input.code);
+    const request = yield* repository.findRequestByCode(code).pipe(Effect.orDie);
+    // A request started with a deviceCode must never be collectable by
+    // whoever saw its userCode (URL, screen, browser history).
+    if (
+      Option.isNone(request) ||
+      request.value.deviceCodeHash !== null ||
+      Date.now() >= LEGACY_LOGIN_SUNSET.getTime()
+    ) {
+      return yield* Effect.fail(new LoginCodeNotFound({ code }));
+    }
+
+    return yield* rejectExpired(request.value);
+  });
+
+  /**
+   * The device this login writes to. A client-supplied id owned by another
+   * account is never reassigned (that would hand over its history); the
+   * login gets a per-user derived id instead.
+   */
+  const resolveDeviceId = Effect.fn("CliLoginService.resolveDeviceId")(function* (
+    clientDeviceId: string,
+    userId: string,
+  ) {
+    const isAvailable = (deviceId: string) =>
+      repository.findDeviceOwner(deviceId).pipe(
+        Effect.orDie,
+        Effect.map((owner) => Option.isNone(owner) || owner.value === userId),
+      );
+
+    if (yield* isAvailable(clientDeviceId)) {
+      return clientDeviceId;
+    }
+    const derived = yield* deriveDeviceId(clientDeviceId, userId);
+    if (yield* isAvailable(derived)) {
+      return derived;
+    }
+
+    return crypto.randomUUID();
   });
 
   return CliLoginService.of({
     start: Effect.fn("CliLoginService.start")(function* (input, wwwOrigin) {
+      const legacy = input.flow !== "device_code";
+      if (legacy && Date.now() >= LEGACY_LOGIN_SUNSET.getTime()) {
+        return yield* Effect.fail(
+          new CliUpgradeRequired({
+            message: "This nightmaxxing CLI is too old to log in. Upgrade it and try again.",
+          }),
+        );
+      }
+
       const code = generateLoginCode();
-      const expiresAt = new Date(Date.now() + LOGIN_REQUEST_TTL_MS);
+      const deviceCode = legacy ? undefined : generateDeviceCode();
+      const deviceCodeHash = deviceCode === undefined ? null : yield* hashDeviceCode(deviceCode);
+      const createdAt = new Date();
+      const expiresAt = new Date(createdAt.getTime() + LOGIN_REQUEST_TTL_MS);
       yield* repository
         .insertRequest({
           code,
+          createdAt,
           deviceArch: input.deviceArch,
+          deviceCodeHash,
           deviceId: input.deviceId,
           deviceName: input.deviceName,
           devicePlatform: input.devicePlatform,
@@ -132,52 +239,92 @@ const makeCliLoginService = Effect.fn("makeCliLoginService")(function* () {
 
       return {
         code,
+        ...(deviceCode === undefined ? {} : { deviceCode }),
         expiresAt: expiresAt.toISOString(),
         intervalSeconds: POLL_INTERVAL_SECONDS,
+        userCode: code,
         verificationUri: cliLoginVerificationUri(wwwOrigin, code),
       };
     }),
-    poll: Effect.fn("CliLoginService.poll")(function* (rawCode) {
-      const request = yield* loadActiveRequest(rawCode);
-      if (request.status !== "approved" || request.token === null || request.userId === null) {
+    poll: Effect.fn("CliLoginService.poll")(function* (input) {
+      const request = yield* loadForPoll(input);
+      if (request.status !== "approved") {
         return { status: "pending" } as const;
       }
 
-      const user = yield* repository.findRequestUser(request.userId).pipe(Effect.orDie);
-      if (Option.isNone(user)) {
+      const claimed = yield* repository
+        .claimApprovedRequest({ now: new Date(), requestId: request.id })
+        .pipe(Effect.orDie);
+      // Lost the race to a concurrent poll (or the row expired meanwhile):
+      // the token belongs to whoever claimed it.
+      if (Option.isNone(claimed) || claimed.value.userId === null) {
         return yield* Effect.fail(new LoginCodeNotFound({ code: request.code }));
       }
 
-      yield* repository.deleteRequest(request.id).pipe(Effect.orDie);
-
-      return { status: "complete", token: request.token, user: user.value } as const;
-    }),
-    approve: Effect.fn("CliLoginService.approve")(function* (user, rawCode) {
-      const request = yield* loadActiveRequest(rawCode);
-      if (request.status === "approved") {
-        // Repeated approve (double click, refreshed tab): keep the first
-        // token instead of minting a second one.
-        return { deviceName: request.deviceName };
+      const approved = claimed.value;
+      const userId = claimed.value.userId;
+      const user = yield* users.findUserById(userId).pipe(Effect.orDie);
+      if (Option.isNone(user)) {
+        return yield* Effect.fail(new LoginCodeNotFound({ code: approved.code }));
       }
 
-      const rawToken = generateCliToken();
-      const tokenHash = yield* hashCliToken(rawToken);
-      yield* repository
-        .approveRequest({
-          deviceArch: request.deviceArch,
-          deviceId: request.deviceId,
-          deviceName: request.deviceName,
-          devicePlatform: request.devicePlatform,
-          deviceVersion: request.deviceVersion,
-          rawToken,
-          requestId: request.id,
-          tokenHash,
+      const deviceId = yield* resolveDeviceId(approved.deviceId, userId);
+      const token = generateCliToken();
+      const issued = yield* repository
+        .issueCliToken({
+          deviceArch: approved.deviceArch,
+          deviceId,
+          deviceName: approved.deviceName,
+          devicePlatform: approved.devicePlatform,
+          deviceVersion: approved.deviceVersion,
+          now: new Date(),
+          tokenHash: yield* hashCliToken(token),
           tokenId: crypto.randomUUID(),
-          userId: user.id,
+          userId,
         })
         .pipe(Effect.orDie);
+      if (!issued) {
+        return yield* Effect.die(new DeviceOwnershipConflict({ deviceId }));
+      }
 
-      return { deviceName: request.deviceName };
+      return { status: "complete", token, user: user.value } as const;
+    }),
+    describe: Effect.fn("CliLoginService.describe")(function* (rawCode) {
+      const request = yield* loadByUserCode(rawCode);
+
+      return {
+        code: request.code,
+        createdAt: request.createdAt.toISOString(),
+        deviceArch: request.deviceArch,
+        deviceName: request.deviceName,
+        devicePlatform: request.devicePlatform,
+        deviceVersion: request.deviceVersion,
+        expiresAt: request.expiresAt.toISOString(),
+        legacyClient: request.deviceCodeHash === null,
+        status: request.status,
+      };
+    }),
+    approve: Effect.fn("CliLoginService.approve")(function* (user, rawCode) {
+      const request = yield* loadByUserCode(rawCode);
+      const approved = yield* repository
+        .approveRequest({ now: new Date(), requestId: request.id, userId: user.id })
+        .pipe(Effect.orDie);
+      if (Option.isSome(approved)) {
+        return { deviceName: approved.value.deviceName };
+      }
+
+      // Lost the conditional update. A repeat approve by the same user
+      // (double click, refreshed tab) is fine — nothing is minted twice.
+      const current = yield* repository.findRequestByCode(request.code).pipe(Effect.orDie);
+      if (
+        Option.isSome(current) &&
+        current.value.status === "approved" &&
+        current.value.userId === user.id
+      ) {
+        return { deviceName: current.value.deviceName };
+      }
+
+      return yield* Effect.fail(new LoginCodeNotFound({ code: request.code }));
     }),
   });
 });
@@ -186,6 +333,14 @@ function cliLoginVerificationUri(wwwOrigin: string, code: string): string {
   return `${wwwOrigin}/login/cli?code=${encodeURIComponent(code)}`;
 }
 
-export { CliLoginRepository, CliLoginService, cliLoginVerificationUri, makeCliLoginService };
+export {
+  CliLoginRepository,
+  CliLoginService,
+  cliLoginVerificationUri,
+  LEGACY_LOGIN_SUNSET,
+  LOGIN_REQUEST_TTL_MS,
+  makeCliLoginService,
+  POLL_INTERVAL_SECONDS,
+};
 
 export type { CliLoginRepositoryShape };

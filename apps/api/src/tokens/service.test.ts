@@ -1,15 +1,16 @@
-import { DeviceNotFound, type CliTokenSummary } from "@nightmaxxing/api-contract";
+import {
+  type CliTokenSummary,
+  DeviceId,
+  DeviceNotFound,
+  TokenId,
+  UserId,
+} from "@nightmaxxing/api-contract";
 import { Effect, Option } from "effect";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { makeTokensService, TokensRepository, type TokensRepositoryShape } from "./service";
 
 type Token = typeof CliTokenSummary.Type;
-
-interface TestTokensService {
-  deleteDevice(userId: string, deviceId: string): Effect.Effect<void, DeviceNotFound>;
-  listTokens(userId: string): Effect.Effect<Token[]>;
-}
 
 function repositoryWithDeleteResult(result: boolean) {
   const deleteDevice = vi.fn(() => Effect.succeed(result));
@@ -29,7 +30,7 @@ function tokenSummary(id: string, revokedAt: string | null): Token {
   return {
     createdAt: "2026-06-20T00:00:00.000Z",
     deviceId: null,
-    id,
+    id: TokenId.make(id),
     lastUsedAt: null,
     name: id,
     revokedAt,
@@ -37,9 +38,9 @@ function tokenSummary(id: string, revokedAt: string | null): Token {
 }
 
 async function makeService(repository: TokensRepositoryShape) {
-  return (await Effect.runPromise(
+  return Effect.runPromise(
     makeTokensService().pipe(Effect.provideService(TokensRepository, repository)),
-  )) as unknown as TestTokensService;
+  );
 }
 
 describe("TokensService.deleteDevice", () => {
@@ -47,7 +48,9 @@ describe("TokensService.deleteDevice", () => {
     const { deleteDevice, repository } = repositoryWithDeleteResult(true);
     const service = await makeService(repository);
 
-    await Effect.runPromise(service.deleteDevice("user_123", "device_123"));
+    await Effect.runPromise(
+      service.deleteDevice(UserId.make("user_123"), DeviceId.make("device_123")),
+    );
 
     expect(deleteDevice).toHaveBeenCalledWith("user_123", "device_123", expect.any(Date));
   });
@@ -57,7 +60,9 @@ describe("TokensService.deleteDevice", () => {
     const service = await makeService(repository);
 
     await expect(
-      Effect.runPromise(service.deleteDevice("user_123", "device_missing")),
+      Effect.runPromise(
+        service.deleteDevice(UserId.make("user_123"), DeviceId.make("device_missing")),
+      ),
     ).rejects.toBeInstanceOf(DeviceNotFound);
   });
 });
@@ -76,7 +81,9 @@ describe("TokensService.listTokens", () => {
     };
     const service = await makeService(repository);
 
-    await expect(Effect.runPromise(service.listTokens("user_123"))).resolves.toEqual([active]);
+    await expect(Effect.runPromise(service.listTokens(UserId.make("user_123")))).resolves.toEqual([
+      active,
+    ]);
 
     expect(listTokens).toHaveBeenCalledWith("user_123");
   });

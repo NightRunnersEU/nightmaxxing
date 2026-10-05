@@ -1,52 +1,26 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-const GITHUB_REPO = "NightRunnersEU/nightmaxxing";
-const GITHUB_URL = `https://github.com/${GITHUB_REPO}`;
-
-const LINKS = {
-  changelog: `${GITHUB_URL}/blob/main/CHANGELOG.md`,
-  discord: "https://discord.gg/WzX6BpfaRH",
-  x: "https://x.com/pondorasti",
-};
-
-const starsFormatter = new Intl.NumberFormat("en-US", {
-  maximumFractionDigits: 1,
-  notation: "compact",
-});
-
-/** Live GitHub star count for the badge. Unauthenticated, cached for an hour;
- * on failure the count is simply omitted. */
-function useGithubStars() {
-  return useQuery({
-    queryFn: async (): Promise<number> => {
-      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}`);
-      if (!response.ok) {
-        throw new Error(`GitHub API responded ${response.status}`);
-      }
-      const data = (await response.json()) as { stargazers_count: number };
-      return data.stargazers_count;
-    },
-    queryKey: ["github-stars", GITHUB_REPO],
-    staleTime: 1000 * 60 * 60,
-  });
-}
+import { formatCompact } from "../lib/format";
+import { githubStarsQueryOptions } from "../lib/github-stars";
+import { CHANGELOG_URL, DISCORD_URL, GITHUB_URL, X_URL } from "../lib/site";
 
 /** Footer cells split by hairlines, with page breathing room after the footer. */
 function Footer() {
-  const stars = useGithubStars();
+  // Resolved server-side by the root loader; null when GitHub was unavailable.
+  const stars = useQuery(githubStarsQueryOptions);
 
   return (
     <footer className="mx-4 mb-16 max-w-5xl border-x border-border lg:mx-auto -mt-px grid grid-cols-2 gap-px border-y bg-border font-mono sm:grid-cols-4">
       <FooterLink href={GITHUB_URL}>
         GitHub
-        {stars.data === undefined ? null : (
-          <span className="text-muted-foreground">[{starsFormatter.format(stars.data)}]</span>
+        {stars.data === undefined || stars.data === null ? null : (
+          <span className="text-muted-foreground">[{formatCompact(stars.data)}]</span>
         )}
       </FooterLink>
-      <FooterLink href={LINKS.changelog}>Changelog</FooterLink>
-      <FooterLink href={LINKS.discord}>Discord</FooterLink>
-      <FooterLink href={LINKS.x}>X</FooterLink>
+      <FooterLink href={CHANGELOG_URL}>Changelog</FooterLink>
+      <FooterLink href={DISCORD_URL}>Discord</FooterLink>
+      <FooterLink href={X_URL}>X</FooterLink>
     </footer>
   );
 }

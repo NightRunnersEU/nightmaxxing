@@ -2,7 +2,7 @@ import { arch, hostname } from "node:os";
 
 import { Data, Effect } from "effect";
 import { Command, Flag } from "effect/unstable/cli";
-import type { AuthUser } from "@nightmaxxing/api-contract";
+import { DeviceId, type AuthUser } from "@nightmaxxing/api-contract";
 
 import packageJson from "../../package.json";
 import {
@@ -13,9 +13,18 @@ import {
   ConfigService,
   TerminalService,
 } from "../services";
+import { booleanFlag } from "../flags";
 import { formatUrl, humanFrame, humanLog, humanSpinner, writeJson } from "../output";
 import {
+  apiFailureMessage,
+  ApiTimeoutError,
+  isKnownApiFailure,
+  LOGIN_REQUEST_TIMEOUT_MS,
+  withApiTimeout,
+} from "../api-failure";
+import {
   alreadyLoggedInAsMessage,
+  apiErrorMessage,
   loggedInAsMessage,
   validateCurrentLogin,
 } from "../auth-validation";
@@ -23,13 +32,30 @@ import {
 class StartCliLoginError extends Data.TaggedError("StartCliLoginError")<{
   readonly cause: unknown;
 }> {
-  override message = "error: failed to start CLI login\nhint: check your network and try again";
+  override get message() {
+    // A rate limit (typed or, say, Cloudflare's HTML 429), a timeout or a
+    // server error gets the shared wording; another typed error says itself.
+    const apiMessage = apiErrorMessage(this.cause);
+    return apiMessage === undefined || isKnownApiFailure(this.cause)
+      ? apiFailureMessage(
+          "failed to start CLI login",
+          this.cause,
+          "check your network and try again",
+        )
+      : `error: ${apiMessage}`;
+  }
 }
 
 class PollCliLoginError extends Data.TaggedError("PollCliLoginError")<{
   readonly cause: unknown;
 }> {
-  override message = "error: failed to poll CLI login\nhint: run nightmaxxing login again";
+  override get message() {
+    // e.g. an expired or unknown login code: the server says what to do next.
+    const apiMessage = apiErrorMessage(this.cause);
+    return apiMessage === undefined || isKnownApiFailure(this.cause)
+      ? apiFailureMessage("failed to poll CLI login", this.cause, "run nightmaxxing login again")
+      : `error: ${apiMessage}`;
+  }
 }
 
 class OpenBrowserError extends Data.TaggedError("OpenBrowserError")<{
@@ -88,8 +114,13 @@ class LoginTokenInvalidError extends Data.TaggedError("LoginTokenInvalidError")<
 class LoginValidationError extends Data.TaggedError("LoginValidationError")<{
   readonly cause: unknown;
 }> {
-  override message =
-    "error: failed to validate stored login\nhint: check your network and try again";
+  override get message() {
+    return apiFailureMessage(
+      "failed to validate stored login",
+      this.cause,
+      "check your network and try again",
+    );
+  }
 }
 
 class NonInteractiveLoginError extends Data.TaggedError("NonInteractiveLoginError")<{}> {
@@ -111,7 +142,7 @@ interface BrowserLoginResult {
 const loginCommand = Command.make(
   "login",
   {
-    json: Flag.boolean("json").pipe(Flag.withDescription("Output machine-readable JSON")),
+    json: booleanFlag("json").pipe(Flag.withDescription("Output machine-readable JSON")),
   },
   ({ json }) => loginEffect({ json }),
 ).pipe(Command.withDescription("Log in to nightmaxxing via your browser"));
@@ -187,21 +218,30 @@ function browserLoginEffect(options: BrowserLoginOptions) {
     const client = yield* clients.make({ baseUrl: stored.apiUrl });
 
     const startSpinner = yield* humanSpinner("Creating login code", options);
-    const start = yield* client.cliLogin
-      .start({
+    const start = yield* withApiTimeout(
+      client.cliLogin.start({
         payload: {
           deviceArch: arch(),
-          deviceId,
+          deviceId: DeviceId.make(deviceId),
           deviceName: hostname(),
           devicePlatform: process.platform,
           deviceVersion: packageJson.version,
+          flow: "device_code",
         },
-      })
-      .pipe(
-        Effect.tap((login) => Effect.sync(() => startSpinner.stop(`Code: ${login.code}`))),
-        Effect.tapError(() => Effect.sync(() => startSpinner.error("Failed to start CLI login"))),
-        Effect.mapError((cause) => new StartCliLoginError({ cause })),
-      );
+      }),
+      LOGIN_REQUEST_TIMEOUT_MS,
+    ).pipe(
+      Effect.mapError((cause) => new StartCliLoginError({ cause })),
+      // The deviceCode is the only credential poll accepts; never proceed
+      // (or fall back to polling by the user code) without it.
+      Effect.flatMap(({ deviceCode, ...login }) =>
+        deviceCode === undefined
+          ? Effect.fail(new StartCliLoginError({ cause: "missing deviceCode" }))
+          : Effect.succeed({ ...login, deviceCode }),
+      ),
+      Effect.tap((login) => Effect.sync(() => startSpinner.stop(`Code: ${login.userCode}`))),
+      Effect.tapError(() => Effect.sync(() => startSpinner.error("Failed to start CLI login"))),
+    );
 
     if (canOpenBrowser) {
       const openSpinner = yield* humanSpinner(
@@ -237,10 +277,26 @@ function browserLoginEffect(options: BrowserLoginOptions) {
       );
     }
 
-    for (let attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt += 1) {
-      const poll = yield* client.cliLogin
-        .poll({ payload: { code: start.code } })
-        .pipe(Effect.mapError((cause) => new PollCliLoginError({ cause })));
+    let attempt = 0;
+    while (attempt < MAX_POLL_ATTEMPTS) {
+      const poll = yield* withApiTimeout(
+        client.cliLogin.poll({ payload: { deviceCode: start.deviceCode } }),
+        LOGIN_REQUEST_TIMEOUT_MS,
+      ).pipe(
+        // Over the server's per-network cap (a shared NAT, say): wait as
+        // told and keep polling instead of failing the login.
+        Effect.catchTag("TooManyRequests", ({ retryAfterSeconds }) =>
+          Effect.succeed({ retryAfterSeconds, status: "rate_limited" as const }),
+        ),
+        // One slow check is not a failed login: poll again. The wait spends
+        // attempts like any other, so a server that never answers still
+        // ends the login within MAX_POLL_ATTEMPTS intervals.
+        Effect.catch((cause) =>
+          cause instanceof ApiTimeoutError
+            ? Effect.succeed({ status: "timed_out" as const })
+            : Effect.fail(new PollCliLoginError({ cause })),
+        ),
+      );
 
       if (poll.status === "complete") {
         const written = yield* config
@@ -257,8 +313,25 @@ function browserLoginEffect(options: BrowserLoginOptions) {
         return { config: nextConfig, user: poll.user };
       }
 
+      let waitSeconds = start.intervalSeconds;
+      if (poll.status === "rate_limited") {
+        waitSeconds = Math.max(poll.retryAfterSeconds, start.intervalSeconds);
+        yield* humanLog(
+          "info",
+          `Too many login checks from this network; retrying in ${waitSeconds}s`,
+          options,
+        );
+      }
+
+      // A long wait spends the attempts it replaces, so waiting out a rate
+      // limit (or a check that timed out) never stretches the login past
+      // MAX_POLL_ATTEMPTS intervals, which stays inside the login code's
+      // lifetime.
+      const spentSeconds =
+        waitSeconds + (poll.status === "timed_out" ? LOGIN_REQUEST_TIMEOUT_MS / 1000 : 0);
+      attempt += Math.max(1, Math.ceil(spentSeconds / Math.max(start.intervalSeconds, 1)));
       yield* clock
-        .sleep(start.intervalSeconds * 1000)
+        .sleep(waitSeconds * 1000)
         .pipe(Effect.mapError((cause) => new LoginSleepError({ cause })));
     }
 

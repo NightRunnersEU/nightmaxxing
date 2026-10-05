@@ -1,12 +1,18 @@
-import { Context } from "effect";
-import { Effect } from "effect";
-import { Option } from "effect";
+import { Context, Effect, Option } from "effect";
 
 import { DeviceNotFound, TokenNotFound } from "@nightmaxxing/api-contract";
-import type { CliIdentity, CliTokenSummary, DeviceSummary } from "@nightmaxxing/api-contract";
+import type {
+  CliIdentity,
+  CliTokenSummary,
+  DeviceId,
+  DeviceSummary,
+  TokenId,
+  UserId,
+} from "@nightmaxxing/api-contract";
 
 import { CLI_TOKEN_PREFIX, hashCliToken } from "../auth/crypto";
 import type { DatabaseError } from "../database";
+import type { RawUsageStorageError } from "../usage/raw-store";
 
 /**
  * CLI token resolution and the settings surface (devices + tokens). Tokens
@@ -16,32 +22,28 @@ import type { DatabaseError } from "../database";
 
 interface TokensServiceShape {
   /** Resolves a raw `tmx_` bearer; touches lastUsedAt on success. */
-  resolveCliToken(
-    rawToken: string,
-  ): Effect.Effect<Option.Option<typeof CliIdentity.Type>, never, any>;
-  listDevices(userId: string): Effect.Effect<(typeof DeviceSummary.Type)[], never, any>;
-  listTokens(userId: string): Effect.Effect<(typeof CliTokenSummary.Type)[], never, any>;
-  deleteDevice(userId: string, deviceId: string): Effect.Effect<void, DeviceNotFound, any>;
-  revokeToken(userId: string, tokenId: string): Effect.Effect<void, TokenNotFound, any>;
+  resolveCliToken(rawToken: string): Effect.Effect<Option.Option<CliIdentity>>;
+  listDevices(userId: UserId): Effect.Effect<DeviceSummary[]>;
+  listTokens(userId: UserId): Effect.Effect<CliTokenSummary[]>;
+  deleteDevice(userId: UserId, deviceId: DeviceId): Effect.Effect<void, DeviceNotFound>;
+  revokeToken(userId: UserId, tokenId: TokenId): Effect.Effect<void, TokenNotFound>;
 }
 
 interface TokensRepositoryShape {
   findIdentityByHash(
     tokenHash: string,
     now: Date,
-  ): Effect.Effect<Option.Option<typeof CliIdentity.Type>, DatabaseError, any>;
-  listDevices(userId: string): Effect.Effect<(typeof DeviceSummary.Type)[], DatabaseError, any>;
-  listTokens(userId: string): Effect.Effect<(typeof CliTokenSummary.Type)[], DatabaseError, any>;
+  ): Effect.Effect<Option.Option<CliIdentity>, DatabaseError>;
+  listDevices(userId: string): Effect.Effect<DeviceSummary[], DatabaseError>;
+  listTokens(userId: string): Effect.Effect<CliTokenSummary[], DatabaseError>;
+  /** Removes the device, its usage rows and raw reports (rows and stored
+   * objects), and revokes its tokens. */
   deleteDevice(
     userId: string,
     deviceId: string,
     now: Date,
-  ): Effect.Effect<boolean, DatabaseError, any>;
-  revokeToken(
-    userId: string,
-    tokenId: string,
-    now: Date,
-  ): Effect.Effect<boolean, DatabaseError, any>;
+  ): Effect.Effect<boolean, DatabaseError | RawUsageStorageError>;
+  revokeToken(userId: string, tokenId: string, now: Date): Effect.Effect<boolean, DatabaseError>;
 }
 
 class TokensService extends Context.Service<TokensService, TokensServiceShape>()(
@@ -91,4 +93,4 @@ const makeTokensService = Effect.fn("makeTokensService")(function* () {
 
 export { makeTokensService, TokensRepository, TokensService };
 
-export type { TokensRepositoryShape };
+export type { TokensRepositoryShape, TokensServiceShape };

@@ -1,6 +1,6 @@
 import { Cause, Effect, Layer } from "effect";
-import type { AuthUser } from "@nightmaxxing/api-contract";
-import { describe, expect, it } from "vitest";
+import { UserId, type AuthUser } from "@nightmaxxing/api-contract";
+import { describe, expect, it } from "vite-plus/test";
 
 import { ConsoleService, TerminalService, type NightmaxxingApiClient } from "../services";
 import {
@@ -13,7 +13,7 @@ import type { SyncAuth, SyncResult } from "./sync";
 
 const user: AuthUser = {
   avatarUrl: null,
-  id: "user_123",
+  id: UserId.make("user_123"),
   login: "alex",
   name: null,
 };

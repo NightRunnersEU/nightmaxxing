@@ -4,24 +4,24 @@ import {
   devices,
   sessions,
   usageDays,
+  usageRawBatches,
   usageSourceStats,
   userAccounts,
   users,
   type User,
   type UserAccount,
 } from "@nightmaxxing/db";
-import { and, eq, gt } from "drizzle-orm";
-import { Effect } from "effect";
-import { Layer } from "effect";
-import { Option } from "effect";
+import { and, eq, gt, like, or } from "drizzle-orm";
+import { Effect, Layer, Option } from "effect";
 
-import { Drizzle } from "../database";
+import { DatabaseError, Drizzle, firstRow } from "../database";
+import { toAuthUser } from "../public-user";
 import {
   AuthRepository,
-  type CurrentUser,
+  AuthService,
+  makeAuthService,
   type OAuthProfile,
-  type OAuthProviderId,
-  type UserAccountSummary,
+  UserRecordMissing,
 } from "./service";
 
 const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
@@ -32,20 +32,13 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
     profile: OAuthProfile,
     now: Date,
   ) {
-    const rows = yield* database.use((db) =>
-      db.select().from(users).where(eq(users.id, userId)).limit(1),
-    );
-    const user = rows[0];
-    if (user === undefined) {
-      return yield* Effect.die(`missing user ${userId}`);
-    }
-
+    const user = yield* findUserOrFail(userId);
     const next = {
       avatarUrl: user.avatarUrl ?? profile.avatarUrl,
       name: user.name ?? profile.name,
     };
     if (next.avatarUrl === user.avatarUrl && next.name === user.name) {
-      return toCurrentUser(user);
+      return toAuthUser(user);
     }
 
     const [updated] = yield* database.use((db) =>
@@ -56,7 +49,7 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
         .returning(),
     );
 
-    return toCurrentUser(updated ?? { ...user, ...next, updatedAt: now });
+    return toAuthUser(updated ?? { ...user, ...next, updatedAt: now });
   });
 
   return AuthRepository.of({
@@ -79,7 +72,7 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
           ]),
         );
 
-        return toCurrentUser(user);
+        return toAuthUser(user);
       }),
     findAccountUser: (provider, providerAccountId) =>
       Effect.gen(function* () {
@@ -96,19 +89,10 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
             )
             .limit(1),
         );
-        const row = rows[0];
 
-        return row === undefined ? Option.none() : Option.some(toCurrentUser(row.user));
+        return firstRow(rows).pipe(Option.map((row) => toAuthUser(row.user)));
       }),
-    findUserById: (userId) =>
-      Effect.gen(function* () {
-        const rows = yield* database.use((db) =>
-          db.select().from(users).where(eq(users.id, userId)).limit(1),
-        );
-        const row = rows[0];
-
-        return row === undefined ? Option.none() : Option.some(toCurrentUser(row));
-      }),
+    findUserById: (userId) => findUserRow(userId).pipe(Effect.map(Option.map(toAuthUser))),
     findUsersByVerifiedEmail: (email) =>
       Effect.gen(function* () {
         const rows = yield* database.use((db) =>
@@ -120,7 +104,7 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
             .orderBy(users.createdAt, users.login),
         );
 
-        return rows.map((row) => toCurrentUser(row.user));
+        return rows.map((row) => toAuthUser(row.user));
       }),
     insertSession: (input) =>
       Effect.gen(function* () {
@@ -133,13 +117,18 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
           }),
         );
       }),
-    isLoginTaken: (login) =>
+    listLoginsLike: (base) =>
       Effect.gen(function* () {
+        // LIKE is case-insensitive and `_` is a wildcard, so this can
+        // over-match; callers compare lowercased exact strings.
         const rows = yield* database.use((db) =>
-          db.select({ id: users.id }).from(users).where(eq(users.login, login)).limit(1),
+          db
+            .select({ login: users.login })
+            .from(users)
+            .where(or(like(users.login, base), like(users.login, `${base}-%`))),
         );
 
-        return rows.length > 0;
+        return rows.map((row) => row.login);
       }),
     linkAccount: (userId, profile) =>
       Effect.gen(function* () {
@@ -175,18 +164,18 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
             .orderBy(userAccounts.provider),
         );
 
-        return rows.map(toUserAccountSummary);
+        return rows.map(toAccountProfile);
       }),
     mergeUsers: ({ sourceUserId, targetUserId }) =>
       Effect.gen(function* () {
         if (sourceUserId === targetUserId) {
-          const target = yield* findUserOrDie(targetUserId);
-          return toCurrentUser(target);
+          const target = yield* findUserOrFail(targetUserId);
+          return toAuthUser(target);
         }
 
         const [source, target] = yield* Effect.all([
-          findUserOrDie(sourceUserId),
-          findUserOrDie(targetUserId),
+          findUserOrFail(sourceUserId),
+          findUserOrFail(targetUserId),
         ]);
         const now = new Date();
         const shadowBan = mergedShadowBan(source, target);
@@ -221,6 +210,12 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
               .update(usageSourceStats)
               .set({ userId: targetUserId })
               .where(eq(usageSourceStats.userId, sourceUserId)),
+            // Raw report objects stay at their keys: the row's objectKey is
+            // the pointer, and the userId inside the key is provenance only.
+            db
+              .update(usageRawBatches)
+              .set({ userId: targetUserId })
+              .where(eq(usageRawBatches.userId, sourceUserId)),
             db
               .update(users)
               .set({
@@ -234,8 +229,8 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
           ]),
         );
 
-        const merged = yield* findUserOrDie(targetUserId);
-        return toCurrentUser(merged);
+        const merged = yield* findUserOrFail(targetUserId);
+        return toAuthUser(merged);
       }),
     findSessionUser: (sessionId, now) =>
       Effect.gen(function* () {
@@ -247,9 +242,8 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
             .where(and(eq(sessions.id, sessionId), gt(sessions.expiresAt, now)))
             .limit(1),
         );
-        const row = rows[0];
 
-        return row === undefined ? Option.none() : Option.some(toCurrentUser(row.user));
+        return firstRow(rows).pipe(Option.map((row) => toAuthUser(row.user)));
       }),
     deleteSession: (sessionId) =>
       Effect.gen(function* () {
@@ -257,22 +251,30 @@ const makeD1AuthRepository = Effect.fn("makeD1AuthRepository")(function* () {
       }),
   });
 
-  function findUserOrDie(userId: string) {
-    return Effect.gen(function* () {
-      const rows = yield* database.use((db) =>
-        db.select().from(users).where(eq(users.id, userId)).limit(1),
-      );
-      const user = rows[0];
-      if (user === undefined) {
-        return yield* Effect.die(`missing user ${userId}`);
-      }
+  function findUserRow(userId: string) {
+    return database
+      .use((db) => db.select().from(users).where(eq(users.id, userId)).limit(1))
+      .pipe(Effect.map(firstRow));
+  }
 
-      return user;
-    });
+  function findUserOrFail(userId: string) {
+    return findUserRow(userId).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () =>
+            Effect.fail(new DatabaseError({ cause: new UserRecordMissing({ userId }) })),
+          onSome: Effect.succeed,
+        }),
+      ),
+    );
   }
 });
 
 const AuthRepositoryLive = Layer.effect(AuthRepository, makeD1AuthRepository());
+
+const AuthServiceLive = Layer.effect(AuthService, makeAuthService()).pipe(
+  Layer.provide(AuthRepositoryLive),
+);
 
 function accountInsert(userId: string, profile: OAuthProfile, now: Date) {
   return {
@@ -300,20 +302,18 @@ function mergedShadowBan(
   };
 }
 
-function toCurrentUser(user: Pick<User, "avatarUrl" | "id" | "login" | "name">): CurrentUser {
-  return { avatarUrl: user.avatarUrl, id: user.id, login: user.login, name: user.name };
-}
-
-function toUserAccountSummary(account: UserAccount): UserAccountSummary {
+/** The public identity slice of a users row — every repository that joins
+ * users returns this shape. */
+function toAccountProfile(account: UserAccount): OAuthProfile {
   return {
     avatarUrl: account.avatarUrl,
     email: account.email,
     emailVerified: account.emailVerified,
     login: account.login,
     name: account.name,
-    provider: account.provider as OAuthProviderId,
+    provider: account.provider,
     providerAccountId: account.providerAccountId,
   };
 }
 
-export { AuthRepositoryLive, mergedShadowBan };
+export { AuthRepositoryLive, AuthServiceLive, mergedShadowBan };

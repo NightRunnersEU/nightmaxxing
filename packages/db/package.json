@@ -3,23 +3,20 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./migrations": "./src/migrations.ts"
   },
   "scripts": {
-    "build": "bun run typecheck",
-    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
-    "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc --project tsconfig.json"
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts"
   },
   "dependencies": {
+    "@nightmaxxing/api-contract": "workspace:*",
     "drizzle-orm": "catalog:"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "catalog:",
     "@types/bun": "catalog:",
-    "better-sqlite3": "catalog:",
     "drizzle-kit": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vite-plus": "catalog:"
   }
 }

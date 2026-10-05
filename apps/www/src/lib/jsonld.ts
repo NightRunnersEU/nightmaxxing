@@ -1,13 +1,20 @@
 import type { ProfileResponse } from "@nightmaxxing/api-contract";
 
-import { profileOgDescription, profileOgTitle, SITE_ORIGIN } from "./og";
+import { profileOgDescription, profileOgTitle } from "./og";
+import {
+  NPM_INSTALL_COMMAND,
+  NPM_URL,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_ORIGIN,
+  siteUrl,
+} from "./site";
 
 type Profile = typeof ProfileResponse.Type;
 
 const ORGANIZATION_NAME = "NightRunnersEU";
 const ORGANIZATION_ID = `${SITE_ORIGIN}/#organization`;
 const WEBSITE_ID = `${SITE_ORIGIN}/#website`;
-const SITE_NAME = "maxxing.nrght.eu";
 
 const ORGANIZATION_SAME_AS = ["https://github.com/NightRunnersEU"];
 
@@ -29,7 +36,7 @@ function webSiteSchema(): Record<string, unknown> {
     "@id": WEBSITE_ID,
     name: SITE_NAME,
     url: SITE_ORIGIN,
-    description: "The best place to track token usage.",
+    description: SITE_DESCRIPTION,
     publisher: { "@id": ORGANIZATION_ID },
   };
 }
@@ -44,12 +51,9 @@ function softwareApplicationSchema(): Record<string, unknown> {
     applicationCategory: "DeveloperApplication",
     operatingSystem: "macOS, Linux, Windows",
     url: SITE_ORIGIN,
-    downloadUrl: "https://www.npmjs.com/package/@nightrunners/nightmaxxing",
-    installUrl: "https://www.npmjs.com/package/@nightrunners/nightmaxxing",
-    softwareHelp: {
-      "@type": "CreativeWork",
-      text: "npm install -g @nightrunners/nightmaxxing@latest",
-    },
+    downloadUrl: NPM_URL,
+    installUrl: NPM_URL,
+    softwareHelp: { "@type": "CreativeWork", text: NPM_INSTALL_COMMAND },
     publisher: { "@id": ORGANIZATION_ID },
     offers: {
       "@type": "Offer",
@@ -81,7 +85,7 @@ function faqPageSchema(items: readonly FaqItem[]): Record<string, unknown> {
 
 function profilePageSchema(profile: Profile): Record<string, unknown> {
   const { stats, user } = profile;
-  const url = new URL(`/${encodeURIComponent(user.login)}`, SITE_ORIGIN).toString();
+  const url = siteUrl(`/${encodeURIComponent(user.login)}`);
 
   const person: Record<string, unknown> = {
     "@type": "Person",
@@ -106,7 +110,7 @@ function profilePageSchema(profile: Profile): Record<string, unknown> {
 
   if (stats.activeDays > 0) {
     const variableMeasured: Record<string, unknown>[] = [
-      { "@type": "PropertyValue", name: "totalSpendUsd", value: stats.totalSpendUsd },
+      { "@type": "PropertyValue", name: "totalSpendUsd", value: stats.spendUsd },
       { "@type": "PropertyValue", name: "totalTokens", value: stats.totalTokens },
       { "@type": "PropertyValue", name: "activeDays", value: stats.activeDays },
       { "@type": "PropertyValue", name: "sessionCount", value: stats.sessionCount },

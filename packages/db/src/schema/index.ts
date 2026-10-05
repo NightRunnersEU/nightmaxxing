@@ -8,21 +8,38 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-const users = sqliteTable("users", {
-  id: text("id").primaryKey(),
-  login: text("login").notNull().unique("users_login_unique"),
-  name: text("name"),
-  avatarUrl: text("avatar_url"),
-  shadowBannedAt: integer("shadow_banned_at", { mode: "timestamp_ms" }),
-  shadowBannedByUserId: text("shadow_banned_by_user_id"),
-  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
-});
+import {
+  ServiceAutoUpdateManager,
+  ServiceAutoUpdateReason,
+  ServiceAutoUpdateStatus,
+  ServiceCheckInStatus,
+  ServiceRepairReason,
+  ServiceRepairStatus,
+} from "@nightmaxxing/api-contract";
+
+// Unique columns are declared as `uniqueIndex` rather than column-level
+// `.unique()`: drizzle-kit v1 renders `.unique()` as an inline table
+// constraint, but these were created as named unique indexes (drizzle-kit
+// v0), and redeclaring them would make `db:generate` rebuild the tables.
+const users = sqliteTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    login: text("login").notNull(),
+    name: text("name"),
+    avatarUrl: text("avatar_url"),
+    shadowBannedAt: integer("shadow_banned_at", { mode: "timestamp_ms" }),
+    shadowBannedByUserId: text("shadow_banned_by_user_id"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [uniqueIndex("users_login_unique").on(table.login)],
+);
 
 const userAccounts = sqliteTable(
   "user_accounts",
   {
-    provider: text("provider", { enum: ["github"] }).notNull(),
+    provider: text("provider", { enum: ["github", "google"] }).notNull(),
     providerAccountId: text("provider_account_id").notNull(),
     userId: text("user_id")
       .notNull()
@@ -53,37 +70,54 @@ const sessions = sqliteTable(
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [index("sessions_user_idx").on(table.userId)],
+  (table) => [
+    index("sessions_user_idx").on(table.userId),
+    index("sessions_expires_at_idx").on(table.expiresAt),
+  ],
 );
 
 /**
- * Device-code login flow. The raw CLI token is parked on the row between
- * approve and poll; the row is deleted when poll delivers it (exactly once)
- * and rows expire 10 minutes after start regardless.
+ * Device-code login flow (RFC 8628 shaped). `code` is the short user code
+ * shown in the browser; `deviceCodeHash` is the sha-256 of the high-entropy
+ * secret only the CLI holds, and poll requires it. Rows with a null
+ * `deviceCodeHash` were started by pre-device-code CLIs and may be polled by
+ * `code` until the legacy sunset. No token is ever stored here: approve only
+ * flips `status`, and the CLI token is minted when poll atomically deletes
+ * the approved row. Rows expire 10 minutes after start; a cron purges them.
  */
-const cliLoginRequests = sqliteTable("cli_login_requests", {
-  id: text("id").primaryKey(),
-  code: text("code").notNull().unique("cli_login_requests_code_unique"),
-  status: text("status", { enum: ["pending", "approved"] })
-    .notNull()
-    .default("pending"),
-  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
-  token: text("token"),
-  deviceId: text("device_id").notNull(),
-  deviceName: text("device_name").notNull(),
-  devicePlatform: text("device_platform").notNull(),
-  deviceArch: text("device_arch"),
-  deviceVersion: text("device_version"),
-  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-});
+const cliLoginRequests = sqliteTable(
+  "cli_login_requests",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull(),
+    deviceCodeHash: text("device_code_hash"),
+    status: text("status", { enum: ["pending", "approved"] })
+      .notNull()
+      .default("pending"),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    deviceId: text("device_id").notNull(),
+    deviceName: text("device_name").notNull(),
+    devicePlatform: text("device_platform").notNull(),
+    deviceArch: text("device_arch"),
+    deviceVersion: text("device_version"),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("cli_login_requests_code_unique").on(table.code),
+    uniqueIndex("cli_login_requests_device_code_hash_unique").on(table.deviceCodeHash),
+    index("cli_login_requests_expires_at_idx").on(table.expiresAt),
+    // Account merges re-point rows by user_id, and deleting a user cascades here.
+    index("cli_login_requests_user_idx").on(table.userId),
+  ],
+);
 
 /** Never expires by design; revokedAt is the only kill switch. */
 const cliTokens = sqliteTable(
   "cli_tokens",
   {
     id: text("id").primaryKey(),
-    tokenHash: text("token_hash").notNull().unique("cli_tokens_token_hash_unique"),
+    tokenHash: text("token_hash").notNull(),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -93,12 +127,19 @@ const cliTokens = sqliteTable(
     lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
     revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
   },
-  (table) => [index("cli_tokens_user_idx").on(table.userId)],
+  (table) => [
+    uniqueIndex("cli_tokens_token_hash_unique").on(table.tokenHash),
+    index("cli_tokens_user_idx").on(table.userId),
+  ],
 );
 
 /**
  * id is a client-generated UUID persisted in the CLI config — it survives
  * logout/login so re-syncs stay idempotent across re-authentication.
+ */
+/**
+ * Service telemetry enums are type-level only (no CHECK constraint): values
+ * arrive already validated by the check-in contract, which owns the literals.
  */
 const devices = sqliteTable(
   "devices",
@@ -125,21 +166,27 @@ const devices = sqliteTable(
     serviceAutoUpdateError: text("service_auto_update_error"),
     serviceAutoUpdateInstalledVersion: text("service_auto_update_installed_version"),
     serviceAutoUpdateLatestVersion: text("service_auto_update_latest_version"),
-    serviceAutoUpdateManager: text("service_auto_update_manager"),
-    serviceAutoUpdateReason: text("service_auto_update_reason"),
-    serviceAutoUpdateStatus: text("service_auto_update_status"),
+    serviceAutoUpdateManager: text("service_auto_update_manager", {
+      enum: ServiceAutoUpdateManager.literals,
+    }),
+    serviceAutoUpdateReason: text("service_auto_update_reason", {
+      enum: ServiceAutoUpdateReason.literals,
+    }),
+    serviceAutoUpdateStatus: text("service_auto_update_status", {
+      enum: ServiceAutoUpdateStatus.literals,
+    }),
     serviceBackend: text("service_backend"),
     serviceError: text("service_error"),
     serviceReloadRequired: integer("service_reload_required", { mode: "boolean" }),
     serviceRepairAttemptedAt: integer("service_repair_attempted_at", { mode: "timestamp_ms" }),
     serviceRepairCompletedAt: integer("service_repair_completed_at", { mode: "timestamp_ms" }),
     serviceRepairError: text("service_repair_error"),
-    serviceRepairReason: text("service_repair_reason"),
-    serviceRepairStatus: text("service_repair_status"),
+    serviceRepairReason: text("service_repair_reason", { enum: ServiceRepairReason.literals }),
+    serviceRepairStatus: text("service_repair_status", { enum: ServiceRepairStatus.literals }),
     serviceRunnerTarget: text("service_runner_target"),
     serviceRunnerVersion: text("service_runner_version"),
     serviceSchedulerActive: integer("service_scheduler_active", { mode: "boolean" }),
-    serviceStatus: text("service_status"),
+    serviceStatus: text("service_status", { enum: ServiceCheckInStatus.literals }),
     serviceTemplateVersion: integer("service_template_version"),
   },
   (table) => [index("devices_user_idx").on(table.userId)],
@@ -169,7 +216,16 @@ const usageDays = sqliteTable(
   },
   (table) => [
     primaryKey({ columns: [table.deviceId, table.date, table.source, table.model] }),
-    index("usage_days_user_date_idx").on(table.userId, table.date),
+    // Covers the per-user scans: leaderboard and rank windows (grouped by
+    // user, summing cost/tokens) and profile reads run index-only. Leading
+    // with user_id lets SQLite skip-scan the date window per user and get
+    // GROUP BY user_id order for free; a date-leading index is never picked.
+    index("usage_days_user_date_cost_tokens_idx").on(
+      table.userId,
+      table.date,
+      table.costUsd,
+      table.totalTokens,
+    ),
     index("usage_days_date_idx").on(table.date),
   ],
 );
@@ -216,13 +272,13 @@ const usageRawBatches = sqliteTable(
     parserVersion: text("parser_version").notNull(),
   },
   (table) => [
+    // Also serves device-scoped lookups via its device_id prefix, so no
+    // separate device index.
     uniqueIndex("usage_raw_batches_device_payload_hash_unique").on(
       table.deviceId,
       table.payloadHash,
     ),
     index("usage_raw_batches_user_idx").on(table.userId),
-    index("usage_raw_batches_device_idx").on(table.deviceId),
-    index("usage_raw_batches_source_idx").on(table.source),
   ],
 );
 

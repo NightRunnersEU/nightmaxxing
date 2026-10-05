@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import packageJson from "../package.json";
-import { assertSafeOutputDir, buildServiceRunners } from "./build-service-runners";
+import { assertSafeOutputDir, buildNativePackages } from "./build-native-packages";
 import { createMainPackageJson } from "./publish-manifest";
 import {
   npmDistTagForVersion,
@@ -38,8 +38,7 @@ async function publishCli(options: PublishCliOptions = {}): Promise<void> {
   await rm(outDir, { force: true, recursive: true });
   await mkdir(outDir, { recursive: true });
 
-  await $`bun run build`.cwd(cliDir);
-  await buildServiceRunners({ outDir, targets: serviceRunnerTargets });
+  await buildNativePackages({ outDir, targets: serviceRunnerTargets });
   await writeMainPackage(outDir);
   await smokeTestHostRunner(outDir);
 
@@ -76,8 +75,8 @@ async function writeMainPackage(outDir: string): Promise<void> {
     join(cliDir, "script", "native-bin-launcher.cjs"),
     join(packageDir, "native-bin-launcher.cjs"),
   );
-  await cp(join(cliDir, "script", "native-bin-launcher.cjs"), join(binDir, "nightmaxxing.exe"));
-  await chmod(join(binDir, "nightmaxxing.exe"), 0o755);
+  await cp(join(cliDir, "script", "native-bin-launcher.cjs"), join(binDir, "nightmaxxing"));
+  await chmod(join(binDir, "nightmaxxing"), 0o755);
   await Bun.write(
     join(packageDir, "package.json"),
     `${JSON.stringify(createMainPackageJson(), null, 2)}\n`,
