@@ -13,6 +13,9 @@ import { formatPercent, percentOf } from "../../../lib/format";
 type ProfileInsights = typeof ProfileInsightsResponse.Type;
 type InsightsTotals = ProfileInsights["totals"];
 
+/** What the Agents section ranks and measures by. */
+type AgentMetric = "spend" | "tokens";
+
 interface AgentRow {
   activeDays: number;
   label: string;
@@ -93,11 +96,21 @@ function tokenMix(totals: InsightsTotals): TokenMix {
   };
 }
 
+/**
+ * Rows ranked by `metric`, highest first. The API already orders by spend;
+ * the sort is stable, so agents tied on tokens keep their spend order.
+ */
+function rankAgentRows(rows: readonly AgentRow[], metric: AgentMetric): AgentRow[] {
+  return metric === "spend"
+    ? [...rows]
+    : [...rows].sort((left, right) => right.totalTokens - left.totalTokens);
+}
+
 /** A share for display; a real but sub-0.1% share reads "<0.1%", never "0.0%". */
 function formatShare(share: number): string {
   return share > 0 && share < 0.05 ? "<0.1%" : formatPercent(share);
 }
 
-export { agentRows, formatShare, tokenMix };
+export { agentRows, formatShare, rankAgentRows, tokenMix };
 
-export type { AgentRow, ProfileInsights, TokenMix, TokenMixRow };
+export type { AgentMetric, AgentRow, ProfileInsights, TokenMix, TokenMixRow };
