@@ -1,23 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { Effect } from "effect";
-import { Option } from "effect";
+import { Effect, Option } from "effect";
+import { describe, expect, it } from "vite-plus/test";
 
-import {
-  AccountLinkConflict,
-  AuthRepository,
-  makeAuthService,
-  type CurrentUser,
-  type OAuthProfile,
-  type OAuthProviderId,
-  type UserAccountSummary,
-} from "./service";
+import type { AuthUser, OAuthProviderId } from "@nightmaxxing/api-contract";
+
+import { AccountLinkConflict, AuthRepository, makeAuthService, type OAuthProfile } from "./service";
+import { UserId } from "@nightmaxxing/api-contract";
 
 describe("AuthService provider linking", () => {
-  it("creates GitHub-only users from the verified email slug", async () => {
+  it("creates Google-only users from the verified email slug", async () => {
     const { service } = await makeTestAuth();
 
-    const result = await runAuth(
-      service.signInWithProvider(githubProfile({ email: "Alex+Work@example.com", login: null })),
+    const result = await Effect.runPromise(
+      service.signInWithProvider(googleProfile({ email: "Alex+Work@example.com" })),
     );
 
     expect(result.user.login).toBe("alex-work");
@@ -27,8 +21,47 @@ describe("AuthService provider linking", () => {
     const { service, store } = await makeTestAuth();
     store.users.set("existing", currentUser({ id: "existing", login: "alex" }));
 
-    const result = await runAuth(
-      service.signInWithProvider(githubProfile({ email: "alex@example.com", login: null })),
+    const result = await Effect.runPromise(
+      service.signInWithProvider(googleProfile({ email: "alex@example.com" })),
+    );
+
+    expect(result.user.login).toBe("alex-2");
+  });
+
+  it("takes the lowest free suffix from one lookup of taken logins", async () => {
+    const { service, store } = await makeTestAuth();
+    for (const login of ["alex", "alex-2", "alex-3", "alex-5", "alexa-4"]) {
+      store.users.set(login, currentUser({ id: login, login }));
+    }
+
+    const result = await Effect.runPromise(
+      service.signInWithProvider(googleProfile({ email: "alex@example.com" })),
+    );
+
+    expect(result.user.login).toBe("alex-4");
+  });
+
+  it("never mints a login that a site route owns", async () => {
+    const { service, store } = await makeTestAuth();
+    store.users.set("stats-2", currentUser({ id: "stats-2", login: "stats-2" }));
+
+    const stats = await Effect.runPromise(
+      service.signInWithProvider(githubProfile({ login: "Stats", providerAccountId: "1" })),
+    );
+    const settings = await Effect.runPromise(
+      service.signInWithProvider(googleProfile({ email: "settings@example.com" })),
+    );
+
+    expect(stats.user.login).toBe("stats-3");
+    expect(settings.user.login).toBe("settings-2");
+  });
+
+  it("treats a taken login as taken whatever its case", async () => {
+    const { service, store } = await makeTestAuth();
+    store.users.set("legacy", currentUser({ id: "legacy", login: "Alex" }));
+
+    const result = await Effect.runPromise(
+      service.signInWithProvider(googleProfile({ email: "alex@example.com" })),
     );
 
     expect(result.user.login).toBe("alex-2");
@@ -36,19 +69,19 @@ describe("AuthService provider linking", () => {
 
   it("auto-links a verified email when it belongs to exactly one existing user", async () => {
     const { service, store } = await makeTestAuth();
-    const user = currentUser({ id: "user_github", login: "alex" });
+    const user = currentUser({ id: UserId.make("user_github"), login: "alex" });
     store.users.set(user.id, user);
     store.accounts.set(accountKey("github", "123"), {
       profile: githubProfile({ email: "alex@example.com", providerAccountId: "123" }),
       userId: user.id,
     });
 
-    const result = await runAuth(
-      service.signInWithProvider(githubProfile({ email: "alex@example.com" })),
+    const result = await Effect.runPromise(
+      service.signInWithProvider(googleProfile({ email: "alex@example.com" })),
     );
 
     expect(result.user.id).toBe(user.id);
-    expect(store.accounts.get(accountKey("github", "github_123"))?.userId).toBe(user.id);
+    expect(store.accounts.get(accountKey("google", "google_123"))?.userId).toBe(user.id);
   });
 
   it("merges verified-email duplicates into the oldest matching user", async () => {
@@ -66,16 +99,16 @@ describe("AuthService provider linking", () => {
       userId: second.id,
     });
 
-    const result = await runAuth(
+    const result = await Effect.runPromise(
       service.signInWithProvider(
-        githubProfile({ email: "shared@example.com", providerAccountId: "github" }),
+        googleProfile({ email: "shared@example.com", providerAccountId: "google" }),
       ),
     );
 
     expect(result.user.id).toBe(first.id);
     expect(store.users.has(second.id)).toBe(false);
     expect(store.accounts.get(accountKey("github", "second"))?.userId).toBe(first.id);
-    expect(store.accounts.get(accountKey("github", "github"))?.userId).toBe(first.id);
+    expect(store.accounts.get(accountKey("google", "google"))?.userId).toBe(first.id);
   });
 
   it("signs an existing provider duplicate into the oldest verified-email profile", async () => {
@@ -88,18 +121,18 @@ describe("AuthService provider linking", () => {
       profile: githubProfile({ email: "shared@example.com", providerAccountId: "github" }),
       userId: first.id,
     });
-    store.accounts.set(accountKey("github", "github_123"), {
-      profile: githubProfile({ email: "shared@example.com" }),
+    store.accounts.set(accountKey("google", "google_123"), {
+      profile: googleProfile({ email: "shared@example.com" }),
       userId: second.id,
     });
 
-    const result = await runAuth(
-      service.signInWithProvider(githubProfile({ email: "shared@example.com" })),
+    const result = await Effect.runPromise(
+      service.signInWithProvider(googleProfile({ email: "shared@example.com" })),
     );
 
     expect(result.user.id).toBe(first.id);
     expect(store.users.has(second.id)).toBe(false);
-    expect(store.accounts.get(accountKey("github", "github_123"))?.userId).toBe(first.id);
+    expect(store.accounts.get(accountKey("google", "google_123"))?.userId).toBe(first.id);
   });
 
   it("links a new provider to the current session user", async () => {
@@ -107,14 +140,14 @@ describe("AuthService provider linking", () => {
     const user = currentUser({ id: "current", login: "current" });
     store.users.set(user.id, user);
 
-    const result = await runAuth(
-      service.signInWithProvider(githubProfile({ email: "new@example.com" }), {
+    const result = await Effect.runPromise(
+      service.signInWithProvider(googleProfile({ email: "new@example.com" }), {
         currentUser: user,
       }),
     );
 
     expect(result.user.id).toBe(user.id);
-    expect(store.accounts.get(accountKey("github", "github_123"))?.userId).toBe(user.id);
+    expect(store.accounts.get(accountKey("google", "google_123"))?.userId).toBe(user.id);
   });
 
   it("rejects linking a provider account that belongs to another user", async () => {
@@ -123,14 +156,14 @@ describe("AuthService provider linking", () => {
     const other = currentUser({ id: "other", login: "other" });
     store.users.set(current.id, current);
     store.users.set(other.id, other);
-    store.accounts.set(accountKey("github", "github_123"), {
-      profile: githubProfile({ email: "other@example.com" }),
+    store.accounts.set(accountKey("google", "google_123"), {
+      profile: googleProfile({ email: "other@example.com" }),
       userId: other.id,
     });
 
     await expect(
-      runAuth(
-        service.signInWithProvider(githubProfile({ email: "other@example.com" }), {
+      Effect.runPromise(
+        service.signInWithProvider(googleProfile({ email: "other@example.com" }), {
           currentUser: current,
         }),
       ),
@@ -147,20 +180,20 @@ describe("AuthService provider linking", () => {
       profile: githubProfile({ email: "alex@example.com", providerAccountId: "github" }),
       userId: current.id,
     });
-    store.accounts.set(accountKey("github", "github_123"), {
-      profile: githubProfile({ email: "alex@example.com" }),
+    store.accounts.set(accountKey("google", "google_123"), {
+      profile: googleProfile({ email: "alex@example.com" }),
       userId: duplicate.id,
     });
 
-    const result = await runAuth(
-      service.signInWithProvider(githubProfile({ email: "alex@example.com" }), {
+    const result = await Effect.runPromise(
+      service.signInWithProvider(googleProfile({ email: "alex@example.com" }), {
         currentUser: current,
       }),
     );
 
     expect(result.user.id).toBe(current.id);
     expect(store.users.has(duplicate.id)).toBe(false);
-    expect(store.accounts.get(accountKey("github", "github_123"))?.userId).toBe(current.id);
+    expect(store.accounts.get(accountKey("google", "google_123"))?.userId).toBe(current.id);
   });
 });
 
@@ -173,7 +206,7 @@ interface TestStore {
   accounts: Map<string, AccountRecord>;
   nextUser: number;
   sessions: { id: string; userId: string }[];
-  users: Map<string, CurrentUser>;
+  users: Map<string, AuthUser>;
 }
 
 async function makeTestAuth() {
@@ -226,8 +259,16 @@ async function makeTestAuth() {
       Effect.sync(() => {
         store.sessions.push({ id, userId });
       }),
-    isLoginTaken: (login) =>
-      Effect.sync(() => [...store.users.values()].some((user) => user.login === login)),
+    listLoginsLike: (base) =>
+      Effect.sync(() =>
+        [...store.users.values()]
+          .map((user) => user.login)
+          // Case-insensitive, like the D1 repository's LIKE.
+          .filter((login) => {
+            const lower = login.toLowerCase();
+            return lower === base || lower.startsWith(`${base}-`);
+          }),
+      ),
     linkAccount: (userId, profile) =>
       Effect.sync(() => {
         const user = store.users.get(userId);
@@ -245,7 +286,7 @@ async function makeTestAuth() {
       Effect.sync(() =>
         [...store.accounts.values()]
           .filter((account) => account.userId === userId)
-          .map(({ profile }) => toSummary(profile)),
+          .map(({ profile }) => profile),
       ),
     mergeUsers: ({ sourceUserId, targetUserId }) =>
       Effect.sync(() => {
@@ -287,19 +328,15 @@ async function makeTestAuth() {
   return { service, store };
 }
 
-function runAuth<A, E>(effect: Effect.Effect<A, E, any>): Promise<A> {
-  return Effect.runPromise(effect as Effect.Effect<A, E, never>);
-}
-
 function currentUser(input: {
   avatarUrl?: string | null;
   id: string;
   login: string;
   name?: string | null;
-}): CurrentUser {
+}): AuthUser {
   return {
     avatarUrl: input.avatarUrl ?? null,
-    id: input.id,
+    id: UserId.make(input.id),
     login: input.login,
     name: input.name ?? null,
   };
@@ -318,18 +355,19 @@ function githubProfile(input: Partial<OAuthProfile> = {}): OAuthProfile {
   };
 }
 
-function accountKey(provider: OAuthProviderId, providerAccountId: string): string {
-  return `${provider}:${providerAccountId}`;
+function googleProfile(input: Partial<OAuthProfile> = {}): OAuthProfile {
+  return {
+    avatarUrl: null,
+    email: "alex@example.com",
+    emailVerified: true,
+    login: null,
+    name: null,
+    provider: "google",
+    providerAccountId: "google_123",
+    ...input,
+  };
 }
 
-function toSummary(profile: OAuthProfile): UserAccountSummary {
-  return {
-    avatarUrl: profile.avatarUrl,
-    email: profile.email,
-    emailVerified: profile.emailVerified,
-    login: profile.login,
-    name: profile.name,
-    provider: profile.provider,
-    providerAccountId: profile.providerAccountId,
-  };
+function accountKey(provider: OAuthProviderId, providerAccountId: string): string {
+  return `${provider}:${providerAccountId}`;
 }

@@ -11,7 +11,7 @@ import { upgradeCommand } from "./upgrade";
 import { whoamiCommand } from "./whoami";
 
 const nightmaxxingCommand = Command.make("nightmaxxing").pipe(
-  Command.withDescription("Sync your LLM token usage to the Nightmaxxing leaderboard"),
+  Command.withDescription("Sync your LLM token usage to the nightmaxxing leaderboard"),
   Command.withGlobalFlags([verboseGlobalFlag]),
   Command.withSubcommands([
     bootstrapCommand,

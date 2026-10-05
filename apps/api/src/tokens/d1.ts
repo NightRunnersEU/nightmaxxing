@@ -1,14 +1,24 @@
-import { cliTokens, devices, usageDays, usageSourceStats, users } from "@nightmaxxing/db";
+import {
+  cliTokens,
+  devices,
+  usageDays,
+  usageRawBatches,
+  usageSourceStats,
+  users,
+} from "@nightmaxxing/db";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { Effect } from "effect";
-import { Layer } from "effect";
-import { Option } from "effect";
+import { Effect, Layer, Option } from "effect";
 
-import { Drizzle } from "../database";
-import { TokensRepository } from "./service";
+import { DeviceId, TokenId } from "@nightmaxxing/api-contract";
+
+import { Drizzle, firstRow } from "../database";
+import { toAuthUser } from "../public-user";
+import { RawUsageObjectStore } from "../usage/raw-store";
+import { makeTokensService, TokensRepository, TokensService } from "./service";
 
 const makeD1TokensRepository = Effect.fn("makeD1TokensRepository")(function* () {
   const database = yield* Drizzle;
+  const rawStore = yield* RawUsageObjectStore;
 
   return TokensRepository.of({
     findIdentityByHash: (tokenHash, now) =>
@@ -21,27 +31,27 @@ const makeD1TokensRepository = Effect.fn("makeD1TokensRepository")(function* () 
             .where(and(eq(cliTokens.tokenHash, tokenHash), isNull(cliTokens.revokedAt)))
             .limit(1),
         );
-        const row = rows[0];
-        if (row === undefined) {
+        const row = firstRow(rows);
+        if (Option.isNone(row)) {
           return Option.none();
         }
+        const { token, user } = row.value;
 
         // Freshness bookkeeping only; failures here must not fail auth.
-        yield* database
-          .use((db) =>
-            db.update(cliTokens).set({ lastUsedAt: now }).where(eq(cliTokens.id, row.token.id)),
-          )
-          .pipe(Effect.ignore);
+        // Hour granularity is plenty, and skips a D1 write on almost every
+        // CLI request.
+        if (isLastUsedStale(token.lastUsedAt, now)) {
+          yield* database
+            .use((db) =>
+              db.update(cliTokens).set({ lastUsedAt: now }).where(eq(cliTokens.id, token.id)),
+            )
+            .pipe(Effect.ignore);
+        }
 
         return Option.some({
-          deviceId: row.token.deviceId,
-          tokenId: row.token.id,
-          user: {
-            avatarUrl: row.user.avatarUrl,
-            id: row.user.id,
-            login: row.user.login,
-            name: row.user.name,
-          },
+          deviceId: token.deviceId === null ? null : DeviceId.make(token.deviceId),
+          tokenId: TokenId.make(token.id),
+          user: toAuthUser(user),
         });
       }),
     listDevices: (userId) =>
@@ -57,7 +67,7 @@ const makeD1TokensRepository = Effect.fn("makeD1TokensRepository")(function* () 
         return rows.map((row) => ({
           arch: row.arch,
           createdAt: row.createdAt.toISOString(),
-          id: row.id,
+          id: DeviceId.make(row.id),
           lastSyncAt: row.lastSyncAt?.toISOString() ?? null,
           name: row.name,
           platform: row.platform,
@@ -76,8 +86,8 @@ const makeD1TokensRepository = Effect.fn("makeD1TokensRepository")(function* () 
 
         return rows.map((row) => ({
           createdAt: row.createdAt.toISOString(),
-          deviceId: row.deviceId,
-          id: row.id,
+          deviceId: row.deviceId === null ? null : DeviceId.make(row.deviceId),
+          id: TokenId.make(row.id),
           lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
           name: row.name,
           revokedAt: row.revokedAt?.toISOString() ?? null,
@@ -85,7 +95,19 @@ const makeD1TokensRepository = Effect.fn("makeD1TokensRepository")(function* () 
       }),
     deleteDevice: (userId, deviceId, now) =>
       Effect.gen(function* () {
-        const [deletedDevices] = yield* database.use((db) =>
+        const rawBatchRows = yield* database.use((db) =>
+          db
+            .select({ objectKey: usageRawBatches.objectKey })
+            .from(usageRawBatches)
+            .where(and(eq(usageRawBatches.userId, userId), eq(usageRawBatches.deviceId, deviceId))),
+        );
+        const rawObjectKeys = new Set(rawBatchRows.map((row) => row.objectKey));
+        // Objects before rows: if the batch below fails, a retry finds the
+        // rows again and re-deleting missing objects is a no-op. The reverse
+        // order would strand objects with no row left to find them by.
+        yield* rawStore.deleteObjects([...rawObjectKeys]);
+
+        const [deletedDevices, , , , deletedRawBatches] = yield* database.use((db) =>
           db.batch([
             db
               .delete(devices)
@@ -109,7 +131,19 @@ const makeD1TokensRepository = Effect.fn("makeD1TokensRepository")(function* () 
                   isNull(cliTokens.revokedAt),
                 ),
               ),
+            db
+              .delete(usageRawBatches)
+              .where(
+                and(eq(usageRawBatches.userId, userId), eq(usageRawBatches.deviceId, deviceId)),
+              )
+              .returning({ objectKey: usageRawBatches.objectKey }),
           ]),
+        );
+        // An ingest that landed between the lookup and the batch.
+        yield* rawStore.deleteObjects(
+          deletedRawBatches
+            .map((row) => row.objectKey)
+            .filter((objectKey) => !rawObjectKeys.has(objectKey)),
         );
 
         return deletedDevices.length > 0;
@@ -137,4 +171,14 @@ const makeD1TokensRepository = Effect.fn("makeD1TokensRepository")(function* () 
 
 const TokensRepositoryLive = Layer.effect(TokensRepository, makeD1TokensRepository());
 
-export { TokensRepositoryLive };
+const LAST_USED_REFRESH_MS = 60 * 60 * 1000;
+
+function isLastUsedStale(lastUsedAt: Date | null, now: Date): boolean {
+  return lastUsedAt === null || now.getTime() - lastUsedAt.getTime() >= LAST_USED_REFRESH_MS;
+}
+
+const TokensServiceLive = Layer.effect(TokensService, makeTokensService()).pipe(
+  Layer.provide(TokensRepositoryLive),
+);
+
+export { isLastUsedStale, TokensRepositoryLive, TokensServiceLive };

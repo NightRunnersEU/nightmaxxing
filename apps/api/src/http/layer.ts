@@ -1,46 +1,137 @@
-import { Effect } from "effect";
-import { Layer } from "effect";
-import { Option } from "effect";
+import { Cause, Effect, Layer, Option, Schema, Scope, type Types } from "effect";
 import * as Path from "effect/Path";
 import {
+  HttpEffect,
   HttpMiddleware,
   HttpRouter,
   HttpServerRequest,
+  HttpServerError,
   HttpServerResponse,
-  HttpServerRespondable,
 } from "effect/unstable/http";
 import * as Etag from "effect/unstable/http/Etag";
 import * as HttpPlatform from "effect/unstable/http/HttpPlatform";
+import * as HttpApi from "effect/unstable/httpapi/HttpApi";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
+import type * as HttpApiEndpoint from "effect/unstable/httpapi/HttpApiEndpoint";
 import * as HttpApiError from "effect/unstable/httpapi/HttpApiError";
 
 import {
   CurrentCliIdentity,
   CurrentUser,
   DEFAULT_LEADERBOARD_METRIC,
+  BadRequest,
   DEFAULT_LEADERBOARD_WINDOW,
+  InternalServerError,
+  MethodNotAllowed,
+  PayloadTooLarge,
+  RouteNotFound,
   NightmaxxingApi,
+  TooManyRequests,
 } from "@nightmaxxing/api-contract";
-import type { Authorization, CliAuth } from "@nightmaxxing/api-contract";
 
-import { AppConfig } from "../config";
-import { cookieScopeFor, sessionTokenFrom } from "../auth/cookies";
 import { AdminService } from "../admin/service";
+import { sessionTokenFrom } from "../auth/cookies";
 import { AuthService } from "../auth/service";
 import { CliLoginService } from "../clilogin/service";
-import type { Drizzle } from "../database";
+import { AppConfig, type Deployment, deploymentForHost, deployments } from "../config";
 import { LeaderboardService } from "../leaderboard/service";
+import type { OAuthProviders } from "../oauth/registry";
 import { ProfilesService } from "../profiles/service";
-import { StatsService } from "../stats/service";
+import {
+  RATE_LIMIT_RULES,
+  RateLimiter,
+  rateLimitKey,
+  type RateLimitRule,
+} from "../ratelimit/service";
+import { STATS_CACHE_TTL_SECONDS, StatsService } from "../stats/service";
 import { TokensService } from "../tokens/service";
 import { UsageService } from "../usage/service";
-import { oauthRoutesLayer } from "./routes/oauth";
+import { AuthorizationLive } from "./middleware/authorization";
+import { CliAuthLive } from "./middleware/cli-auth";
+import { badRequest, ErrorBoundaryLive } from "./middleware/error-boundary";
+import { OAUTH_ROUTES, OAuthRoutesLive } from "./routes/oauth";
+import { resolveViewer } from "./viewer";
+
+/** Handler layers, one per contract group — pure pass-throughs over the
+ * domain services. */
 
 /**
- * Handler layers, one per contract group — pure pass-throughs over the
- * domain services. Groups whose milestone has not landed yet die with
- * "not implemented"; the contract still serves and typechecks end-to-end.
+ * CLI payloads reject undeclared properties (`onExcessProperty: "error"`).
+ * Effect v4 ignores the contract's per-struct `parseOptions`, and the
+ * `HttpApi.ParseOptions` annotation can't be used either: the builder applies
+ * it to response and error *encoding* too, and error instances carry runtime
+ * own keys (`stack`, `line`, …), so every CLI error became an opaque 500.
+ * Instead, the cliLogin and usage handlers re-decode the (cached) raw body
+ * strictly — decode-only, responses and errors encode normally. It also stays
+ * off the shared contract: HttpApiClient would apply it to responses, and a
+ * strict CLI would reject every response field the server adds later.
  */
+const STRICT_PAYLOAD_OPTIONS = { onExcessProperty: "error" } as const;
+
+const strictPayloadDecoders = new WeakMap<
+  HttpApiEndpoint.PayloadMap,
+  (input: unknown) => Effect.Effect<unknown, Schema.SchemaError>
+>();
+
+function rejectUndeclaredProperties(endpoint: { readonly payload: HttpApiEndpoint.PayloadMap }) {
+  return Effect.gen(function* () {
+    let decode = strictPayloadDecoders.get(endpoint.payload);
+    if (decode === undefined) {
+      const json = endpoint.payload.get("application/json");
+      if (json === undefined) {
+        return;
+      }
+      decode = Schema.decodeUnknownEffect(
+        Schema.Union(json.schemas) as unknown as Schema.Codec<unknown, unknown>,
+        STRICT_PAYLOAD_OPTIONS,
+      );
+      strictPayloadDecoders.set(endpoint.payload, decode);
+    }
+
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    // The builder already decoded this body leniently, so it is valid JSON.
+    const body = yield* request.json.pipe(Effect.orDie);
+    yield* decode(body).pipe(
+      Effect.mapError((cause) =>
+        badRequest(new HttpApiError.HttpApiSchemaError({ cause, kind: "Payload" })),
+      ),
+    );
+  });
+}
+
+/**
+ * Counts the request against `rule` for the client IP and fails with 429
+ * TooManyRequests once over the cap (ErrorBoundaryLive adds Retry-After). Handlers
+ * call it before any D1 work, so a flood never reaches the database.
+ *
+ * The key is `cf-connecting-ip`: Cloudflare sets it on every request through
+ * its edge and overwrites any client-sent value. X-Forwarded-For is
+ * client-controlled and never used. Without the header the request did not
+ * come through the edge (local dev, the sandbox, tests), so it is not
+ * limited: a shared fallback bucket would let one client lock out everyone.
+ */
+function enforceRateLimit(rule: RateLimitRule) {
+  return Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const ip = request.headers["cf-connecting-ip"];
+    if (ip === undefined || ip === "") {
+      return;
+    }
+
+    const limiter = yield* RateLimiter;
+    if (yield* limiter.limit(rule, rateLimitKey(ip))) {
+      return;
+    }
+
+    const { message, period } = RATE_LIMIT_RULES[rule];
+    return yield* Effect.fail(
+      new TooManyRequests({
+        message: `${message}; try again in ${period} seconds.`,
+        retryAfterSeconds: period,
+      }),
+    );
+  });
+}
 
 const healthHandlers = HttpApiBuilder.group(NightmaxxingApi, "health", (handlers) =>
   handlers.handle("status", () =>
@@ -67,7 +158,13 @@ const meHandlers = HttpApiBuilder.group(NightmaxxingApi, "me", (handlers) =>
       Effect.gen(function* () {
         const user = yield* CurrentUser;
         const auth = yield* AuthService;
-        return { accounts: yield* auth.listAccounts(user.id).pipe(Effect.orDie) };
+        return { accounts: yield* auth.listAccounts(user.id) };
+      }),
+    )
+    .handle("describeCliLogin", ({ query }) =>
+      Effect.gen(function* () {
+        const cliLogin = yield* CliLoginService;
+        return yield* cliLogin.describe(query.code);
       }),
     )
     .handle("approveCliLogin", ({ payload }) =>
@@ -112,33 +209,41 @@ const meHandlers = HttpApiBuilder.group(NightmaxxingApi, "me", (handlers) =>
 
 const cliLoginHandlers = HttpApiBuilder.group(NightmaxxingApi, "cliLogin", (handlers) =>
   handlers
-    .handle("start", ({ payload }) =>
+    .handle("start", ({ endpoint, payload }) =>
       Effect.gen(function* () {
+        yield* enforceRateLimit("cliLoginStart");
+        yield* rejectUndeclaredProperties(endpoint);
         const request = yield* HttpServerRequest.HttpServerRequest;
-        const scope = cookieScopeFor(request.headers["host"] ?? "");
         const cliLogin = yield* CliLoginService;
-        return yield* cliLogin.start(payload, scope.wwwOrigin);
+        return yield* cliLogin.start(
+          payload,
+          deploymentForHost(request.headers["host"] ?? "").wwwOrigin,
+        );
       }),
     )
-    .handle("poll", ({ payload }) =>
+    .handle("poll", ({ endpoint, payload }) =>
       Effect.gen(function* () {
+        yield* enforceRateLimit("cliLoginPoll");
+        yield* rejectUndeclaredProperties(endpoint);
         const cliLogin = yield* CliLoginService;
-        return yield* cliLogin.poll(payload.code);
+        return yield* cliLogin.poll(payload);
       }),
     ),
 );
 
 const usageHandlers = HttpApiBuilder.group(NightmaxxingApi, "usage", (handlers) =>
   handlers
-    .handle("checkIn", ({ payload }) =>
+    .handle("checkIn", ({ endpoint, payload }) =>
       Effect.gen(function* () {
+        yield* rejectUndeclaredProperties(endpoint);
         const identity = yield* CurrentCliIdentity;
         const usage = yield* UsageService;
         return yield* usage.checkIn(identity, payload.device, payload.service);
       }),
     )
-    .handle("ingest", ({ payload }) =>
+    .handle("ingest", ({ endpoint, payload }) =>
       Effect.gen(function* () {
+        yield* rejectUndeclaredProperties(endpoint);
         const identity = yield* CurrentCliIdentity;
         const usage = yield* UsageService;
         return yield* usage.ingestRaw(
@@ -149,8 +254,9 @@ const usageHandlers = HttpApiBuilder.group(NightmaxxingApi, "usage", (handlers) 
         );
       }),
     )
-    .handle("sync", ({ payload }) =>
+    .handle("sync", ({ endpoint, payload }) =>
       Effect.gen(function* () {
+        yield* rejectUndeclaredProperties(endpoint);
         const identity = yield* CurrentCliIdentity;
         const usage = yield* UsageService;
         return yield* usage.syncBatch(identity, payload.device, payload.days, payload.sourceStats);
@@ -176,54 +282,92 @@ const leaderboardHandlers = HttpApiBuilder.group(NightmaxxingApi, "leaderboard",
       const metric = query.metric ?? DEFAULT_LEADERBOARD_METRIC;
       const window = query.window ?? DEFAULT_LEADERBOARD_WINDOW;
 
-      return { entries: yield* leaderboard.list(metric, window), metric, window };
+      const entries = yield* leaderboard.list(metric, window);
+      yield* cacheControl(PUBLIC_READ_CACHE_CONTROL);
+      return { entries, metric, window };
     }),
   ),
 );
+
+/** The signed-in viewer's id, if any — owners still see their own
+ * shadow-banned profile. */
+const viewerUserId = Effect.gen(function* () {
+  const request = yield* HttpServerRequest.HttpServerRequest;
+  const viewer = yield* resolveViewer(sessionTokenFrom(request), { allowCliToken: false }).pipe(
+    // Public reads degrade to the anonymous view rather than failing.
+    Effect.catchTag("CredentialLookupFailed", ({ defect }) =>
+      Effect.logWarning("viewer lookup failed; serving the anonymous view", defect).pipe(
+        Effect.as(Option.none()),
+      ),
+    ),
+  );
+  return Option.getOrNull(Option.map(viewer, (user) => user.id));
+});
 
 const profilesHandlers = HttpApiBuilder.group(NightmaxxingApi, "profiles", (handlers) =>
   handlers
     .handle("identity", ({ params }) =>
       Effect.gen(function* () {
         const profiles = yield* ProfilesService;
-        return yield* profiles.getIdentity(params.login);
+        const identity = yield* profiles.getIdentity(params.login, yield* viewerUserId);
+        yield* cacheControl(yield* viewerCacheControl());
+        return identity;
       }),
     )
     .handle("get", ({ params }) =>
       Effect.gen(function* () {
         const profiles = yield* ProfilesService;
-        return yield* profiles.getProfile(params.login, yield* optionalCurrentUserId());
+        const profile = yield* profiles.getProfile(params.login, yield* viewerUserId);
+        yield* cacheControl(yield* viewerCacheControl());
+        return profile;
       }),
     )
     .handle("daily", ({ params, query }) =>
       Effect.gen(function* () {
         const profiles = yield* ProfilesService;
-        return yield* profiles.getDaily(
+        const daily = yield* profiles.getDaily(
           params.login,
           {
             groupBy: query.groupBy ?? "model",
             since: query.since,
             until: query.until,
           },
-          yield* optionalCurrentUserId(),
+          yield* viewerUserId,
         );
+        yield* cacheControl(yield* viewerCacheControl());
+        return daily;
       }),
     ),
 );
 
-function optionalCurrentUserId() {
+/**
+ * Cache policy for public reads. `s-maxage` only addresses shared caches
+ * (browsers ignore it) and stale-while-revalidate lets them refresh in the
+ * background. Registered after the handler succeeded, and applied to 200s
+ * only, so failures (404 for unknown or hidden profiles) are never cached.
+ */
+const PUBLIC_READ_CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=300";
+const STATS_CACHE_CONTROL = `public, s-maxage=${STATS_CACHE_TTL_SECONDS}, stale-while-revalidate=600`;
+const PRIVATE_CACHE_CONTROL = "private, no-store";
+
+function cacheControl(value: string) {
+  return HttpEffect.appendPreResponseHandler((_request, response) =>
+    Effect.succeed(
+      response.status === 200
+        ? HttpServerResponse.setHeader(response, "cache-control", value)
+        : response,
+    ),
+  );
+}
+
+/**
+ * Profile reads resolve the viewer (a shadow-banned owner still sees their
+ * own profile), so a request carrying credentials must never be shared.
+ */
+function viewerCacheControl() {
   return Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const token = sessionTokenFrom(request);
-    if (token === null) {
-      return null;
-    }
-
-    const auth = yield* AuthService;
-    const user = yield* auth
-      .resolveSession(token)
-      .pipe(Effect.catchCause(() => Effect.succeedNone));
-    return Option.isSome(user) ? user.value.id : null;
+    return sessionTokenFrom(request) === null ? PUBLIC_READ_CACHE_CONTROL : PRIVATE_CACHE_CONTROL;
   });
 }
 
@@ -231,7 +375,9 @@ const statsHandlers = HttpApiBuilder.group(NightmaxxingApi, "stats", (handlers) 
   handlers.handle("get", () =>
     Effect.gen(function* () {
       const stats = yield* StatsService;
-      return yield* stats.getStats();
+      const response = yield* stats.getStats();
+      yield* cacheControl(STATS_CACHE_CONTROL);
+      return response;
     }),
   ),
 );
@@ -261,7 +407,7 @@ const adminHandlers = HttpApiBuilder.group(NightmaxxingApi, "admin", (handlers) 
     ),
 );
 
-const handlersLayer = Layer.mergeAll(
+const HandlersLive = Layer.mergeAll(
   adminHandlers,
   healthHandlers,
   meHandlers,
@@ -272,110 +418,343 @@ const handlersLayer = Layer.mergeAll(
   profilesHandlers,
 );
 
-interface ApiLayerOptions {
-  adminServiceLayer: Layer.Layer<AdminService>;
-  appConfigLayer: Layer.Layer<AppConfig>;
-  authServiceLayer: Layer.Layer<AuthService>;
-  cliLoginServiceLayer: Layer.Layer<CliLoginService>;
-  drizzleLayer: Layer.Layer<Drizzle>;
-  leaderboardServiceLayer: Layer.Layer<LeaderboardService>;
-  profilesServiceLayer: Layer.Layer<ProfilesService>;
-  statsServiceLayer: Layer.Layer<StatsService>;
-  middlewareLayer: Layer.Layer<Authorization | CliAuth, never, AuthService | TokensService>;
-  tokensServiceLayer: Layer.Layer<TokensService>;
-  usageServiceLayer: Layer.Layer<UsageService>;
-}
-
-function makeApiLayer(options: ApiLayerOptions) {
-  const apiLayer = Layer.mergeAll(
-    HttpApiBuilder.layer(NightmaxxingApi, { openapiPath: "/openapi.json" }),
-    oauthRoutesLayer,
-  );
-
-  return apiLayer.pipe(
-    Layer.provide(handlersLayer),
-    Layer.provide(options.middlewareLayer),
-    Layer.provide(requestIdLayer),
-    Layer.provide(corsLayer),
-    Layer.provide(options.cliLoginServiceLayer),
-    Layer.provide(options.adminServiceLayer),
-    Layer.provide(options.leaderboardServiceLayer),
-    Layer.provide(options.profilesServiceLayer),
-    Layer.provide(options.statsServiceLayer),
-    Layer.provide(options.tokensServiceLayer),
-    Layer.provide(options.usageServiceLayer),
-    Layer.provide(options.authServiceLayer),
-    Layer.provide(options.drizzleLayer),
-    Layer.provide(options.appConfigLayer),
-  );
-}
-
-function makeApiHttpEffect(options: ApiLayerOptions) {
-  return makeApiLayer(options).pipe(
-    Layer.provide([Etag.layer, HttpPlatformStub, Path.layer]),
-    HttpRouter.toHttpEffect,
-    Effect.map(recoverDefects),
-  );
-}
-
 /**
- * Schema decode failures respond with their own 400; every other defect
- * (store/decode faults died at the service boundary, bugs) is logged and
- * answered with an opaque 500 — internals never reach the wire.
+ * Last-resort guard outside the router (a fault in the global middleware
+ * itself): logged, answered with the same opaque 500 envelope.
  */
 function recoverDefects<E, R>(
   httpEffect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
 ) {
   return Effect.catchDefect(httpEffect, (defect) =>
-    HttpApiError.HttpApiSchemaError.is(defect)
-      ? HttpServerRespondable.toResponse(defect)
-      : Effect.logError("request died", defect).pipe(
-          Effect.as(HttpServerResponse.empty({ status: 500 })),
-        ),
+    Effect.logError("request died", defect).pipe(
+      Effect.as(errorResponse(new InternalServerError())),
+    ),
   );
 }
 
-const corsLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* AppConfig;
-    return HttpRouter.middleware(
-      HttpMiddleware.cors({
-        allowedOrigins: config.corsOrigins,
-        // The Effect-derived client propagates trace context as BOTH W3C
-        // traceparent and compact B3 (HttpTraceContext.toHeaders); a missing
-        // entry here fails the preflight and the app reads every authed
-        // call as signed-out.
-        allowedHeaders: [
-          "authorization",
-          "b3",
-          "content-type",
-          "traceparent",
-          "tracestate",
-          "x-request-id",
-        ],
-        allowedMethods: ["DELETE", "GET", "PATCH", "POST", "PUT", "OPTIONS"],
-        credentials: true,
-      }),
-      { global: true },
-    );
-  }),
+/**
+ * Each deployment answers browser CORS for its own www only (prod never
+ * trusts the local dev origin), so the allow-list follows the request host
+ * like every other deployment-scoped value. A predicate rather than a
+ * one-entry list: the list form echoes its origin to any caller.
+ */
+function corsFor(deployment: Deployment) {
+  return HttpMiddleware.cors({
+    allowedOrigins: (origin) => origin === deployment.wwwOrigin,
+    // The Effect-derived client propagates trace context as BOTH W3C
+    // traceparent and compact B3 (HttpTraceContext.toHeaders); a missing
+    // entry here fails the preflight and the app reads every authed
+    // call as signed-out.
+    allowedHeaders: [
+      "authorization",
+      "b3",
+      "content-type",
+      "traceparent",
+      "tracestate",
+      "x-request-id",
+    ],
+    allowedMethods: ["DELETE", "GET", "PATCH", "POST", "PUT", "OPTIONS"],
+    credentials: true,
+    // Let browsers reuse a preflight instead of sending one per request
+    // (Chromium caps this at two hours).
+    maxAge: 7_200,
+  });
+}
+
+const developmentCors = corsFor(deployments.development);
+const productionCors = corsFor(deployments.production);
+
+const corsLayer = HttpRouter.middleware(
+  (httpApp) =>
+    Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const deployment = deploymentForHost(request.headers["host"] ?? "");
+      const cors = deployment === deployments.development ? developmentCors : productionCors;
+      return yield* cors(httpApp);
+    }),
+  { global: true },
 );
 
-/** Mints/propagates x-request-id; logs carry it via annotations. */
+const OPENAPI_PATH = "/openapi.json";
+
+/** Client ids are echoed and logged, so only short, header-safe ones are kept. */
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+
+/**
+ * Mints/propagates x-request-id (logs carry it via annotations) and renders
+ * whatever the routes left unanswered in the contract's error envelope: an
+ * unknown path is 404 RouteNotFound, a known path with the wrong method 405
+ * MethodNotAllowed, and a fault in a raw route 500 InternalServerError.
+ * Contract endpoints answer their own errors (see ErrorBoundaryLive). CORS
+ * headers ride on a pre-response handler, so browsers can read these too.
+ *
+ * The cast: HttpRouter.middleware's types reject global middleware that
+ * handles errors; answering them here is the point.
+ */
 const requestIdLayer = HttpRouter.middleware(
   (httpApp) =>
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const requestId = request.headers["x-request-id"] ?? crypto.randomUUID();
-      const response = yield* httpApp.pipe(Effect.annotateLogs("requestId", requestId));
+      const incoming = request.headers["x-request-id"];
+      const requestId =
+        incoming !== undefined && REQUEST_ID_PATTERN.test(incoming)
+          ? incoming
+          : crypto.randomUUID();
+      const response = yield* httpApp.pipe(
+        Effect.catchCause((cause) => unansweredResponse(request, cause)),
+        Effect.annotateLogs("requestId", requestId),
+      );
       return HttpServerResponse.setHeader(response, "x-request-id", requestId);
+    }) as Effect.Effect<HttpServerResponse.HttpServerResponse, Types.unhandled>,
+  { global: true },
+);
+
+function unansweredResponse(
+  request: HttpServerRequest.HttpServerRequest,
+  cause: Cause.Cause<unknown>,
+) {
+  const error = Cause.findErrorOption(cause);
+  if (
+    error._tag === "Some" &&
+    HttpServerError.isHttpServerError(error.value) &&
+    error.value.reason._tag === "RouteNotFound"
+  ) {
+    const allowed = allowedMethods(new URL(request.url, "http://localhost").pathname);
+    // These patterns ignore the router's param limits (100 chars): a path
+    // they match for the request's own method was rejected for its params,
+    // not its method, so it is still an unknown route.
+    return Effect.succeed(
+      allowed.length === 0 || allowed.includes(request.method)
+        ? errorResponse(new RouteNotFound())
+        : HttpServerResponse.setHeader(
+            errorResponse(new MethodNotAllowed()),
+            "allow",
+            allowed.join(", "),
+          ),
+    );
+  }
+
+  if (Cause.hasInterruptsOnly(cause)) {
+    return Effect.failCause(cause);
+  }
+
+  return Effect.logError("request died", cause).pipe(
+    Effect.as(errorResponse(new InternalServerError())),
+  );
+}
+
+/** Every route the router serves: the contract, its OpenAPI document and the
+ * raw OAuth routes. Only used to tell 405 from 404. */
+const ROUTES = [...contractRoutes(), { method: "GET", path: OPENAPI_PATH }, ...OAUTH_ROUTES].map(
+  ({ method, path }) => ({
+    method,
+    pattern: new RegExp(`^${path.replaceAll(/:[^/]+/g, "[^/]+")}$`),
+  }),
+);
+
+function contractRoutes() {
+  const routes: Array<{ method: string; path: string }> = [];
+  HttpApi.reflect(NightmaxxingApi, {
+    onEndpoint: ({ endpoint }) => routes.push({ method: endpoint.method, path: endpoint.path }),
+    onGroup: () => {},
+  });
+  return routes;
+}
+
+function allowedMethods(pathname: string): string[] {
+  const methods = new Set(
+    ROUTES.filter(({ pattern }) => pattern.test(pathname)).map(({ method }) => method),
+  );
+  if (methods.has("GET")) {
+    methods.add("HEAD");
+  }
+
+  return [...methods].sort();
+}
+
+type RequestError =
+  | BadRequest
+  | InternalServerError
+  | MethodNotAllowed
+  | PayloadTooLarge
+  | RouteNotFound;
+
+const REQUEST_ERROR_STATUS = {
+  BadRequest: 400,
+  InternalServerError: 500,
+  MethodNotAllowed: 405,
+  PayloadTooLarge: 413,
+  RouteNotFound: 404,
+} as const satisfies Record<RequestError["_tag"], number>;
+
+/** The `{ _tag, message }` body contract errors encode to. */
+function errorResponse(error: RequestError) {
+  return HttpServerResponse.jsonUnsafe(
+    { _tag: error._tag, message: error.message },
+    { status: REQUEST_ERROR_STATUS[error._tag] },
+  );
+}
+
+/**
+ * Request body caps, enforced before anything reads the body. Usage uploads
+ * carry whole ccusage histories (a heavy multi-source user is a few MB);
+ * every other body — including the unauthenticated CLI login endpoints — is
+ * a small JSON object.
+ */
+const MAX_BODY_BYTES = 64 * 1024;
+const MAX_USAGE_UPLOAD_BYTES = 16 * 1024 * 1024;
+const USAGE_UPLOAD_PATHS = new Set(["/usage/ingest", "/usage/sync"]);
+
+function maxBodyBytes(url: string): number {
+  return USAGE_UPLOAD_PATHS.has(url.split("?", 1)[0]!) ? MAX_USAGE_UPLOAD_BYTES : MAX_BODY_BYTES;
+}
+
+function payloadTooLarge(limit: number) {
+  return errorResponse(
+    new PayloadTooLarge({ message: `Request body exceeds the ${limit}-byte limit.` }),
+  );
+}
+
+/** The whole stream, or `undefined` as soon as it grows past `limit`. */
+function readBodyUpTo(stream: ReadableStream<Uint8Array>, limit: number) {
+  return Effect.tryPromise(async () => {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        return undefined;
+      }
+      chunks.push(value);
+    }
+
+    const body = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return body;
+  });
+}
+
+/**
+ * Rejects oversized bodies with 413 PayloadTooLarge (in the contract's error
+ * envelope; CORS and x-request-id are added by the outer middleware). A
+ * declared Content-Length is checked
+ * without reading; a body without one (chunked) is buffered up to the limit
+ * and handed on as a fresh request.
+ */
+const bodyLimitLayer = HttpRouter.middleware(
+  (httpApp) =>
+    Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const limit = maxBodyBytes(request.url);
+      const declared = request.headers["content-length"];
+      if (declared !== undefined) {
+        return Number(declared) <= limit ? yield* httpApp : payloadTooLarge(limit);
+      }
+
+      const source = request.source;
+      if (!(source instanceof Request) || source.body === null) {
+        return yield* httpApp;
+      }
+
+      const body = yield* readBodyUpTo(source.body, limit).pipe(Effect.option);
+      if (Option.isNone(body)) {
+        return errorResponse(new BadRequest({ message: "Could not read the request body." }));
+      }
+      if (body.value === undefined) {
+        return payloadTooLarge(limit);
+      }
+
+      const buffered = new Request(source.url, {
+        body: body.value,
+        headers: source.headers,
+        method: source.method,
+      });
+      return yield* httpApp.pipe(
+        Effect.provideService(
+          HttpServerRequest.HttpServerRequest,
+          HttpServerRequest.fromWeb(buffered),
+        ),
+      );
     }),
   { global: true },
 );
 
 const HttpPlatformStub = Layer.succeed(HttpPlatform.HttpPlatform, {
+  platform: "web",
+  compression: HttpPlatform.makeCompressionWeb({
+    algorithms: ["gzip", "deflate"],
+    transform: HttpPlatform.compressionTransformWeb,
+  }),
   fileResponse: () => Effect.die("HttpPlatform.fileResponse not supported"),
   fileWebResponse: () => Effect.die("HttpPlatform.fileWebResponse not supported"),
 });
 
-export { makeApiHttpEffect };
+/** Everything the handlers, middleware and raw routes resolve. */
+type ApiServices =
+  | AdminService
+  | AppConfig
+  | AuthService
+  | CliLoginService
+  | LeaderboardService
+  | OAuthProviders
+  | ProfilesService
+  | RateLimiter
+  | StatsService
+  | TokensService
+  | UsageService;
+
+/** Handlers and raw routes resolve services per request; hand them the
+ * instances the router was built with. */
+const RequestServices = Layer.effectContext(Effect.context<ApiServices>());
+
+/** The whole HTTP surface: contract handlers, OAuth routes and middleware. */
+const ApiLive = Layer.mergeAll(
+  HttpApiBuilder.layer(NightmaxxingApi, { openapiPath: OPENAPI_PATH }),
+  OAuthRoutesLive,
+).pipe(
+  Layer.provide(HandlersLive),
+  Layer.provide(Layer.mergeAll(AuthorizationLive, CliAuthLive, ErrorBoundaryLive)),
+  Layer.provide(bodyLimitLayer),
+  Layer.provide(requestIdLayer),
+  Layer.provide(corsLayer),
+  HttpRouter.provideRequest(RequestServices),
+  Layer.provide([Etag.layer, HttpPlatformStub, Path.layer]),
+);
+
+/** Builds the router over `services`; the effect it yields serves requests. */
+function makeApiHttpEffect<E>(services: Layer.Layer<ApiServices, E>) {
+  return ApiLive.pipe(Layer.provide(services), HttpRouter.toHttpEffect, Effect.map(recoverDefects));
+}
+
+/**
+ * Builds the router, handlers, middleware, CORS and OpenAPI spec exactly
+ * once and returns the per-request handler. The worker's `fetch` must be the
+ * returned HttpEffect itself, never an Effect that builds one: alchemy
+ * re-runs an Effect-valued `fetch` on every request, which would rebuild the
+ * whole layer graph per request.
+ *
+ * The built layer lives in its own scope that is never closed — the router
+ * must outlive the init closure (whose scope we cannot name in types) and
+ * every request, and workerd has no isolate-teardown hook anyway. Nothing in
+ * the graph registers finalizers that matter at shutdown.
+ */
+function makeApiFetch<E>(services: Layer.Layer<ApiServices, E>) {
+  return Effect.gen(function* () {
+    const routerScope = yield* Scope.make();
+    return yield* makeApiHttpEffect(services).pipe(Scope.provide(routerScope));
+  });
+}
+
+export { makeApiFetch, makeApiHttpEffect };
+
+export type { ApiServices };

@@ -1,44 +1,64 @@
+import { Context, Effect } from "effect";
 import * as Config from "effect/Config";
-import { Context } from "effect";
-import { Effect } from "effect";
 import * as Redacted from "effect/Redacted";
 
 const productName = "Nightmaxxing";
 const apiWorkerName = "nightmaxxing-api";
 
-type NightmaxxingSandbox = "development" | "production";
-
-interface RuntimeUrls {
-  apiUrl: string;
-  sandbox: NightmaxxingSandbox;
-  wwwUrl: string;
+/** Where one environment lives; cookie attributes and redirect targets derive from it. */
+interface Deployment {
+  apiOrigin: string;
+  cookieDomain: string;
+  secure: boolean;
+  wwwOrigin: string;
 }
 
-const runtimeUrlTable = {
+const deployments = {
   development: {
-    apiUrl: "http://api.nightmaxxing.localhost:8788",
-    sandbox: "development",
-    wwwUrl: "http://nightmaxxing.localhost:3002",
+    apiOrigin: "http://api.nightmaxxing.localhost:8788",
+    cookieDomain: ".nightmaxxing.localhost",
+    secure: false,
+    wwwOrigin: "http://nightmaxxing.localhost:3002",
   },
   production: {
-    apiUrl: "https://api.maxxing.nrght.eu",
-    sandbox: "production",
-    wwwUrl: "https://maxxing.nrght.eu",
+    apiOrigin: "https://api.maxxing.nrght.eu",
+    cookieDomain: ".maxxing.nrght.eu",
+    secure: true,
+    wwwOrigin: "https://maxxing.nrght.eu",
   },
-} as const satisfies Record<NightmaxxingSandbox, RuntimeUrls>;
+} as const satisfies Record<"development" | "production", Deployment>;
 
-interface GitHubOAuthConfig {
+/**
+ * One deploy serves dev (api.nightmaxxing.localhost, http) and prod
+ * (api.maxxing.nrght.eu, https); the request host picks which. The local dev
+ * provider proxies with a rewritten Host (127.0.0.1:port), so any
+ * loopback-ish host means dev. Browser trust (CORS, sign-out CSRF) is scoped
+ * the same way: each deployment trusts only its own www.
+ */
+function deploymentForHost(host: string): Deployment {
+  const hostname = host.split(":")[0] ?? host;
+  const isDev =
+    hostname.endsWith(".nightmaxxing.localhost") ||
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1";
+
+  return isDev ? deployments.development : deployments.production;
+}
+
+/** An empty clientId means the provider is not configured for this deploy. */
+interface OAuthClientConfig {
   clientId: string;
   clientSecret: string;
 }
 
 interface AppConfigShape {
+  /** Users with a verified account email in this list can use the admin API. */
   adminEmails: readonly string[];
   apiWorkerName: string;
-  corsOrigins: string[];
-  github: GitHubOAuthConfig;
+  github: OAuthClientConfig;
+  google: OAuthClientConfig;
   productName: string;
-  urls: RuntimeUrls;
 }
 
 /**
@@ -52,70 +72,38 @@ class AppConfig extends Context.Service<AppConfig, AppConfigShape>()(
 ) {
   /** Secrets resolve from .env at deploy time and bind as secret_text. */
   static readonly fromEnv = Effect.gen(function* () {
-    const adminEmails = yield* Config.string("ADMIN_EMAILS");
-    const githubClientId = yield* Config.string("GITHUB_CLIENT_ID");
-    const githubClientSecret = yield* Config.redacted("GITHUB_CLIENT_SECRET");
-
-    return makeAppConfig(
-      { adminEmails },
-      {
-        github: {
-          clientId: githubClientId,
-          clientSecret: Redacted.value(githubClientSecret),
-        },
-      },
+    const adminEmails = yield* Config.String("ADMIN_EMAILS");
+    const githubClientId = yield* Config.String("GITHUB_CLIENT_ID");
+    const githubClientSecret = yield* Config.Redacted("GITHUB_CLIENT_SECRET");
+    // Google sign-in is optional for Nightmaxxing: unset means not configured.
+    const googleClientId = yield* Config.String("GOOGLE_CLIENT_ID").pipe(Config.withDefault(""));
+    const googleClientSecret = yield* Config.Redacted("GOOGLE_CLIENT_SECRET").pipe(
+      Config.withDefault(Redacted.make("")),
     );
+
+    return AppConfig.of({
+      adminEmails: parseAdminEmails(adminEmails),
+      apiWorkerName,
+      github: {
+        clientId: githubClientId,
+        clientSecret: Redacted.value(githubClientSecret),
+      },
+      google: {
+        clientId: googleClientId,
+        clientSecret: Redacted.value(googleClientSecret),
+      },
+      productName,
+    });
   });
 }
 
-interface AppConfigEnv {
-  adminEmails?: string;
-  NIGHTMAXXING_ENV?: string;
+function parseAdminEmails(value: string): readonly string[] {
+  return value
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter((email) => email.length > 0);
 }
 
-interface AppConfigSecrets {
-  github: GitHubOAuthConfig;
-}
+export { AppConfig, deploymentForHost, deployments };
 
-function makeAppConfig(env: AppConfigEnv, secrets: AppConfigSecrets): AppConfigShape {
-  const urls = resolveRuntimeUrls(env);
-
-  return {
-    adminEmails: parseAdminEmails(env.adminEmails),
-    apiWorkerName,
-    corsOrigins: corsOriginsFor(urls),
-    productName,
-    urls,
-    ...secrets,
-  };
-}
-
-function parseAdminEmails(value: string | undefined): readonly string[] {
-  return value === undefined
-    ? []
-    : value
-        .split(",")
-        .map((email) => email.trim().toLowerCase())
-        .filter((email) => email.length > 0);
-}
-
-function corsOriginsFor(urls: RuntimeUrls): string[] {
-  return [
-    ...new Set([
-      new URL(urls.wwwUrl).origin,
-      // Local dev always passes browser CORS, regardless of resolved sandbox.
-      new URL(runtimeUrlTable.development.wwwUrl).origin,
-    ]),
-  ];
-}
-
-function resolveRuntimeUrls(env: AppConfigEnv): RuntimeUrls {
-  const sandbox: NightmaxxingSandbox =
-    env.NIGHTMAXXING_ENV === "development" ? "development" : "production";
-
-  return runtimeUrlTable[sandbox];
-}
-
-export { AppConfig };
-
-export type { AppConfigShape, GitHubOAuthConfig };
+export type { AppConfigShape, Deployment };

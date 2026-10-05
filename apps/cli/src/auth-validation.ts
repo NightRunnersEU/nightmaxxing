@@ -1,6 +1,7 @@
 import { Effect } from "effect";
-import type { AuthUser } from "@nightmaxxing/api-contract";
+import { type ApiError, ApiErrors, type AuthUser, Unauthorized } from "@nightmaxxing/api-contract";
 
+import { type ApiRetryPolicy, ME_TIMEOUT_MS, withApiRetry } from "./api-failure";
 import {
   formatHighlight,
   humanSpinner,
@@ -13,15 +14,24 @@ type ValidateCurrentLoginSuccessDisposition = "error" | "success";
 type ValidateCurrentLoginSuccessMessage = ((user: AuthUser) => string) | string | undefined;
 
 interface ValidateCurrentLoginOptions extends HumanOutputOptions {
+  /** How to retry a failed `/me`; one attempt when unset. */
+  retry?: ApiRetryPolicy | undefined;
   showSpinner?: boolean | undefined;
   successDisposition?: ValidateCurrentLoginSuccessDisposition | undefined;
   successMessage?: ValidateCurrentLoginSuccessMessage;
 }
 
 type CurrentLoginValidation =
-  | { _tag: "failed"; cause: unknown }
+  | { _tag: "failed"; attempts: number; cause: unknown }
   | { _tag: "unauthorized" }
   | { _tag: "valid"; user: AuthUser };
+
+const SINGLE_ATTEMPT: ApiRetryPolicy = {
+  attempts: 1,
+  backoffMs: [],
+  jitterRatio: 0,
+  timeoutMs: ME_TIMEOUT_MS,
+};
 
 function validateCurrentLogin(
   client: NightmaxxingApiClient,
@@ -32,13 +42,22 @@ function validateCurrentLogin(
       options.showSpinner === true
         ? yield* humanSpinner("Checking current login", options)
         : undefined;
-    const result = yield* client.me.me().pipe(
+    const result = yield* withApiRetry(() => client.me.me(), {
+      ...(options.retry ?? SINGLE_ATTEMPT),
+      // A bad token is final, whatever the policy says.
+      retryable: (cause) =>
+        !isUnauthorizedError(cause) && (options.retry?.retryable?.(cause) ?? true),
+    }).pipe(
       Effect.map((me): CurrentLoginValidation => ({ _tag: "valid", user: me.user })),
-      Effect.catch((cause) =>
+      Effect.catch((failure) =>
         Effect.succeed(
-          isUnauthorizedError(cause)
+          isUnauthorizedError(failure.cause)
             ? ({ _tag: "unauthorized" } satisfies CurrentLoginValidation)
-            : ({ _tag: "failed", cause } satisfies CurrentLoginValidation),
+            : ({
+                _tag: "failed",
+                attempts: failure.attempts,
+                cause: failure.cause,
+              } satisfies CurrentLoginValidation),
         ),
       ),
     );
@@ -65,12 +84,21 @@ function validateCurrentLogin(
   });
 }
 
-function isUnauthorizedError(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    (cause as { _tag?: string })._tag === "Unauthorized"
-  );
+/**
+ * True only for a decoded `Unauthorized` wire error, which the client decodes
+ * solely from a 401 whose body is tagged `Unauthorized`. Anything else (other
+ * statuses, untagged 401s from a proxy, network or decode failures) is not
+ * proof the token is bad, so callers must never clear the token on it.
+ */
+function isUnauthorizedError(cause: unknown): cause is Unauthorized {
+  return cause instanceof Unauthorized;
+}
+
+/** The server's human-readable message when `cause` is a typed wire error. */
+function apiErrorMessage(cause: unknown): string | undefined {
+  return ApiErrors.some((ErrorClass) => cause instanceof ErrorClass)
+    ? (cause as ApiError).message
+    : undefined;
 }
 
 function loggedInAsMessage(
@@ -87,7 +115,13 @@ function alreadyLoggedInAsMessage(
   return `Already logged in as ${formatHighlight(user.login, options)}`;
 }
 
-export { alreadyLoggedInAsMessage, isUnauthorizedError, loggedInAsMessage, validateCurrentLogin };
+export {
+  alreadyLoggedInAsMessage,
+  apiErrorMessage,
+  isUnauthorizedError,
+  loggedInAsMessage,
+  validateCurrentLogin,
+};
 export type {
   CurrentLoginValidation,
   ValidateCurrentLoginSuccessDisposition,

@@ -1,23 +1,28 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
-import { ChartGrid } from "./axis";
+import { cn } from "../../lib/cn";
+import { formatMonth, formatMonthLong, formatUsd } from "../../lib/format";
+import { barAnchor, BarChart, ColumnSpotlight, hiddenWhenNarrow } from "./axis";
 import {
+  barCenter,
   barLayout,
-  CHART_AXIS,
+  barX,
   CHART_WIDTH,
-  formatMonth,
-  formatMonthLong,
   linearScale,
+  maxValue,
   niceMax,
+  round2,
 } from "./scale";
-import { anchorLeft, ChartTooltip } from "./tooltip";
+import { segmentTooltipRows, type ChartSegment } from "./series";
+import { ChartLiveRegion, ChartTooltip } from "./tooltip";
+import { useChartCursor } from "./use-chart-cursor";
 
-/** A stacked per-model total for each calendar month. */
+/** A stacked per-model total (spend by default) per calendar month, labelled above each bar. */
 
 interface MonthPoint {
   /** YYYY-MM */
   month: string;
-  segments: { color: string; series: string; value: number }[];
+  segments: ChartSegment[];
   value: number;
 }
 
@@ -25,116 +30,96 @@ const HEIGHT = 220;
 
 function MonthBars({
   months,
-  valueFormatter,
-  valueLabel,
+  valueFormatter = formatUsd,
+  valueLabel = "Spend",
 }: {
-  months: MonthPoint[];
-  valueFormatter: (value: number) => string;
-  valueLabel: string;
+  months: readonly MonthPoint[];
+  valueFormatter?: (value: number) => string;
+  valueLabel?: string;
 }) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const cursor = useChartCursor(months.length);
+  const hovered = cursor.active;
 
-  const max = useMemo(() => niceMax(Math.max(...months.map((point) => point.value), 0)), [months]);
+  const max = useMemo(() => niceMax(maxValue(months, (point) => point.value)), [months]);
   const y = linearScale(max, HEIGHT - 26);
-  const { barWidth, slot } = barLayout(months.length, 0.55, 44);
+  const layout = barLayout(months.length, 0.55, 44);
 
-  const active = hovered === null ? null : months[hovered];
-  const activeTooltip =
-    hovered === null
-      ? null
-      : (() => {
-          const x = CHART_AXIS + slot * hovered + (slot - barWidth) / 2;
-          return {
-            left: anchorLeft((x + barWidth / 2) / CHART_WIDTH, 11),
-            top: HEIGHT - y(months[hovered]?.value ?? 0) - 12,
-          };
-        })();
+  const active = hovered === null ? undefined : months[hovered];
+  const centerOf = (index: number) => barCenter(layout, index) / CHART_WIDTH;
 
   return (
-    <div className="relative">
-      <svg
-        aria-label={`Monthly ${valueLabel.toLowerCase()} across ${months.length} months`}
-        className="block w-full select-none"
-        onPointerLeave={() => setHovered(null)}
-        role="img"
-        viewBox={`0 0 ${CHART_WIDTH} ${HEIGHT + 24}`}
-      >
-        <ChartGrid baseline={HEIGHT} format={valueFormatter} max={max} y={y} />
-        {months.map((point, index) => {
-          const hasValue = point.value > 0;
-          const totalHeight = y(point.value);
-          const x = CHART_AXIS + slot * index + (slot - barWidth) / 2;
-          let cursor = HEIGHT;
-          return (
-            <g key={point.month} onPointerEnter={() => setHovered(index)}>
-              {/* Invisible hover target spanning the full column height. */}
-              <rect
-                fill="transparent"
-                height={HEIGHT}
-                width={slot}
-                x={CHART_AXIS + slot * index}
-                y={0}
-              />
-              {hasValue ? (
-                <>
-                  {point.segments.map((segment) => {
-                    const height = y(segment.value);
-                    cursor -= height;
-                    return (
-                      <rect
-                        fill={segment.color}
-                        height={Math.max(height, 0)}
-                        key={segment.series}
-                        opacity={hovered === null || hovered === index ? 1 : 0.45}
-                        width={barWidth}
-                        x={x}
-                        y={cursor}
-                      />
-                    );
-                  })}
-                  <text
-                    className="fill-current text-muted-foreground"
-                    fontSize={10}
-                    fontWeight={500}
-                    textAnchor="middle"
-                    x={x + barWidth / 2}
-                    y={HEIGHT - totalHeight - 6}
-                  >
-                    {valueFormatter(point.value)}
-                  </text>
-                </>
-              ) : null}
-              <text
-                className="fill-current opacity-45"
-                fontSize={10}
-                textAnchor="middle"
-                x={x + barWidth / 2}
-                y={HEIGHT + 16}
+    <BarChart
+      ariaLabel={`Monthly ${valueLabel.toLowerCase()} across ${months.length} months`}
+      columns={months.length}
+      format={valueFormatter}
+      height={HEIGHT}
+      labels={months.map((point, index) => ({
+        center: centerOf(index),
+        key: point.month,
+        label: formatMonth(point.month),
+      }))}
+      max={max}
+      onColumn={cursor.setActive}
+      overlay={
+        <>
+          {months.map((point, index) =>
+            point.value > 0 ? (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "pointer-events-none absolute -translate-x-1/2 whitespace-nowrap font-medium text-muted-foreground",
+                  hiddenWhenNarrow(index, months.length) && "max-sm:hidden",
+                )}
+                key={point.month}
+                style={{ left: `${centerOf(index) * 100}%`, top: HEIGHT - y(point.value) - 16 }}
               >
-                {formatMonth(point.month)}
-              </text>
-            </g>
+                {valueFormatter(point.value)}
+              </span>
+            ) : null,
+          )}
+          <ChartLiveRegion>
+            {active !== undefined && hovered !== null ? (
+              <ChartTooltip
+                anchor={barAnchor(layout, hovered, HEIGHT - y(active.value), y(active.value))}
+                rows={segmentTooltipRows(active.segments, (segment) =>
+                  valueFormatter(segment.value),
+                )}
+                subtitle={`${valueFormatter(active.value)} total`}
+                title={formatMonthLong(active.month)}
+              />
+            ) : null}
+          </ChartLiveRegion>
+        </>
+      }
+      surfaceProps={cursor.surfaceProps}
+      y={y}
+    >
+      {months.map((point, index) => {
+        const x = round2(barX(layout, index));
+        let stackTop = HEIGHT;
+        return point.segments.map((segment) => {
+          if (segment.value <= 0) {
+            return null;
+          }
+          const height = y(segment.value);
+          stackTop -= height;
+          return (
+            <rect
+              fill={segment.color}
+              height={round2(height)}
+              key={`${point.month}-${segment.series}`}
+              width={round2(layout.barWidth)}
+              x={x}
+              y={round2(stackTop)}
+            />
           );
-        })}
-      </svg>
-      {active !== null && active !== undefined && activeTooltip !== null ? (
-        <ChartTooltip
-          className="w-56 -translate-y-full"
-          rows={active.segments
-            .filter((segment) => segment.value > 0)
-            .sort((a, b) => b.value - a.value)
-            .map((segment) => ({
-              color: segment.color,
-              label: segment.series,
-              value: valueFormatter(segment.value),
-            }))}
-          style={{ left: activeTooltip.left, top: `${activeTooltip.top}px` }}
-          subtitle={`${valueFormatter(active.value)} total`}
-          title={formatMonthLong(active.month)}
-        />
-      ) : null}
-    </div>
+        });
+      })}
+      <ColumnSpotlight active={hovered} height={HEIGHT} slot={layout.slot} />
+    </BarChart>
   );
 }
 
 export { MonthBars };
+
+export type { MonthPoint };

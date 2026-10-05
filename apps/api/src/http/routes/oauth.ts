@@ -1,205 +1,290 @@
-import { Effect } from "effect";
-import { Layer } from "effect";
-import { Option } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 
+import { Forbidden, OAuthProviderId } from "@nightmaxxing/api-contract";
+
 import {
-  cookie,
-  cookieScopeFor,
+  cookieOptions,
+  PKCE_COOKIE,
   readCookie,
   SESSION_COOKIE,
   sessionTokenFrom,
   STATE_COOKIE,
 } from "../../auth/cookies";
-import { generateToken } from "../../auth/crypto";
-import {
-  AuthService,
-  type AuthServiceShape,
-  type CurrentUser,
-  type OAuthProfile,
-  type OAuthProviderId,
-} from "../../auth/service";
-import { AppConfig, type AppConfigShape } from "../../config";
-import { buildAuthorizeUrl, GitHubClient } from "../../github/client";
+import { generateToken, pkceChallenge, toBase64Url } from "../../auth/crypto";
+import { AuthService, SESSION_TTL_MS } from "../../auth/service";
+import { AppConfig, type Deployment, deploymentForHost } from "../../config";
+import { OAuthProviders } from "../../oauth/registry";
+import { resolveViewer } from "../viewer";
 
 /**
  * Routes that cannot live in the HttpApi contract: the OAuth browser flow
  * (302 redirects + Set-Cookie). They register as raw router routes and share
  * the router's global middleware (CORS, request ids) with the contract
  * endpoints.
+ *
+ * The round trip is bound to the browser by two short-lived cookies: the
+ * `state` (CSRF) and the PKCE code verifier. Both are cleared on every
+ * callback outcome. Callback failures redirect back to www's /login with an
+ * `error` code instead of stranding the user on a raw JSON body.
  */
 
-const githubOAuthStartRoute = oauthStartRoute("github");
-const githubOAuthCallbackRoute = oauthCallbackRoute("github");
+type OAuthCallbackError =
+  | "oauth_account_conflict"
+  | "oauth_cancelled"
+  | "oauth_failed"
+  | "oauth_state_mismatch";
 
-function oauthStartRoute(provider: OAuthProviderId) {
+const OAUTH_ROUNDTRIP_MAX_AGE_SECONDS = 600;
+
+function oauthStartRoute(providerId: OAuthProviderId) {
   return HttpRouter.add(
     "GET",
-    `/auth/${provider}/start`,
+    oauthStartPath(providerId),
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const config = yield* AppConfig;
-      const scope = cookieScopeFor(request.headers["host"] ?? "");
+      const provider = (yield* OAuthProviders)[providerId];
+      const deployment = deploymentForHost(request.headers["host"] ?? "");
       const url = new URL(request.url, "http://localhost");
       const redirectPath = sanitizeOAuthRedirectPath(url.searchParams.get("redirect"));
+      // Optional providers (Google) ship without credentials on some deploys.
+      if ((yield* AppConfig)[providerId].clientId === "") {
+        return oauthErrorRedirect(deployment, "oauth_failed", providerId, redirectPath);
+      }
       const state = encodeOAuthState(generateToken(), redirectPath);
+      const codeVerifier = generateToken();
+      const codeChallenge = yield* pkceChallenge(codeVerifier);
+      const roundtrip = cookieOptions(deployment, OAUTH_ROUNDTRIP_MAX_AGE_SECONDS);
 
       return HttpServerResponse.empty({ status: 302 }).pipe(
-        HttpServerResponse.setHeaders({
-          location: buildProviderAuthorizeUrl(
-            provider,
-            config,
-            `${scope.apiOrigin}/auth/${provider}/callback`,
-            state,
-          ),
-          "set-cookie": cookie(scope, STATE_COOKIE, state, 600),
-        }),
+        HttpServerResponse.setHeader(
+          "location",
+          provider.authorizeUrl(callbackUrl(deployment, providerId), state, codeChallenge),
+        ),
+        HttpServerResponse.setCookiesUnsafe([
+          [STATE_COOKIE, state, roundtrip],
+          [PKCE_COOKIE, codeVerifier, roundtrip],
+        ]),
       );
     }),
   );
 }
 
-function oauthCallbackRoute(provider: OAuthProviderId) {
+function oauthCallbackRoute(providerId: OAuthProviderId) {
   return HttpRouter.add(
     "GET",
-    `/auth/${provider}/callback`,
+    oauthCallbackPath(providerId),
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const scope = cookieScopeFor(request.headers["host"] ?? "");
+      const provider = (yield* OAuthProviders)[providerId];
+      const deployment = deploymentForHost(request.headers["host"] ?? "");
       const url = new URL(request.url, "http://localhost");
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state");
       const expectedState = readCookie(request, STATE_COOKIE);
-      if (code === null || state === null || expectedState === null || state !== expectedState) {
-        return HttpServerResponse.jsonUnsafe(
-          { error: { code: "oauth_state_mismatch", message: "Sign-in expired; try again." } },
-          { status: 400 },
+      const codeVerifier = readCookie(request, PKCE_COOKIE);
+      // Only trust the redirect embedded in OUR cookie copy of the state.
+      const redirectPath =
+        expectedState === null ? null : redirectPathFromOAuthState(expectedState);
+      // The provider redirects back with `error` (and no code) when the user
+      // declines or it cannot authorize; that is not a stale sign-in.
+      const providerError = url.searchParams.get("error");
+      if (providerError !== null) {
+        return oauthErrorRedirect(
+          deployment,
+          providerError === "access_denied" ? "oauth_cancelled" : "oauth_failed",
+          providerId,
+          redirectPath,
         );
       }
-      const redirectPath = redirectPathFromOAuthState(state);
+      if (
+        code === null ||
+        state === null ||
+        expectedState === null ||
+        codeVerifier === null ||
+        state !== expectedState
+      ) {
+        return oauthErrorRedirect(deployment, "oauth_state_mismatch", providerId, redirectPath);
+      }
 
       const auth = yield* AuthService;
+      // Browser round trip: only the cookie session counts (never a bearer).
+      const priorSessionToken = readCookie(request, SESSION_COOKIE);
       const result = yield* Effect.gen(function* () {
-        const currentUser = yield* currentUserFromRequest(request, auth);
-        const profile = yield* fetchProviderProfile(
-          provider,
+        const currentUser = Option.getOrUndefined(
+          yield* resolveViewer(priorSessionToken, { allowCliToken: false }),
+        );
+        const accessToken = yield* provider.exchangeCode(
           code,
-          `${scope.apiOrigin}/auth/${provider}/callback`,
-        ).pipe(Effect.orDie);
-        // Provider access tokens are dropped here on purpose — identity is all
-        // this product needs after sign-in/linking.
-        const options = currentUser === null ? undefined : { currentUser };
-        const signedIn = yield* auth.signInWithProvider(profile, options);
+          callbackUrl(deployment, providerId),
+          codeVerifier,
+        );
+        // The provider access token is dropped after this read on purpose —
+        // identity is all this product needs after sign-in/linking.
+        const profile = yield* provider.fetchProfile(accessToken);
+        const signedIn = yield* auth.signInWithProvider(profile, { currentUser });
         return { _tag: "success" as const, ...signedIn };
       }).pipe(
-        Effect.catchTag("AccountLinkConflict", () =>
-          Effect.succeed({ _tag: "conflict" as const, provider }),
-        ),
+        Effect.catchTag("AccountLinkConflict", () => Effect.succeed({ _tag: "conflict" as const })),
         Effect.catchCause((cause) =>
-          Effect.sync(() => {
-            console.error(`${provider} oauth callback failed`, String(cause).slice(0, 500));
-            return { _tag: "failed" as const };
-          }),
+          Effect.logError(`${providerId} oauth callback failed`, cause).pipe(
+            Effect.as({ _tag: "failed" as const }),
+          ),
         ),
       );
 
       switch (result._tag) {
         case "conflict":
-          return HttpServerResponse.jsonUnsafe(
-            {
-              error: {
-                code: "oauth_account_conflict",
-                message: `That ${providerLabel(provider)} account is already connected to another nightmaxxing profile.`,
-              },
-            },
-            { status: 409 },
-          );
+          return oauthErrorRedirect(deployment, "oauth_account_conflict", providerId, redirectPath);
         case "failed":
-          return HttpServerResponse.jsonUnsafe(
-            {
-              error: {
-                code: "oauth_failed",
-                message: `${providerLabel(provider)} sign-in failed; try again.`,
-              },
-            },
-            { status: 502 },
-          );
-        case "success":
+          return oauthErrorRedirect(deployment, "oauth_failed", providerId, redirectPath);
+        case "success": {
+          // Signing in again replaces the browser's session: drop the old row
+          // so it cannot outlive the cookie it was issued for.
+          if (priorSessionToken !== null && priorSessionToken !== result.token) {
+            yield* auth.signOut(priorSessionToken).pipe(Effect.ignoreCause);
+          }
+
           return HttpServerResponse.empty({ status: 302 }).pipe(
-            HttpServerResponse.setHeaders({
-              location: `${scope.wwwOrigin}${redirectPath ?? defaultOAuthRedirectPath(result.user.login)}`,
-              "set-cookie": cookie(scope, SESSION_COOKIE, result.token, 30 * 24 * 60 * 60),
-            }),
+            HttpServerResponse.setHeader(
+              "location",
+              `${deployment.wwwOrigin}${redirectPath ?? defaultOAuthRedirectPath(result.user.login)}`,
+            ),
+            HttpServerResponse.setCookiesUnsafe([
+              ...clearedRoundtripCookies(deployment),
+              [SESSION_COOKIE, result.token, cookieOptions(deployment, SESSION_TTL_MS / 1000)],
+            ]),
           );
+        }
       }
     }),
   );
 }
 
-// Clears the cookie even for expired sessions, so it stays outside the
-// Authorization middleware.
+function oauthErrorRedirect(
+  deployment: Deployment,
+  error: OAuthCallbackError,
+  provider: OAuthProviderId,
+  redirectPath: string | null,
+) {
+  return HttpServerResponse.empty({ status: 302 }).pipe(
+    HttpServerResponse.setHeader(
+      "location",
+      oauthErrorLocation(deployment.wwwOrigin, error, provider, redirectPath),
+    ),
+    HttpServerResponse.setCookiesUnsafe(clearedRoundtripCookies(deployment)),
+  );
+}
+
+function oauthErrorLocation(
+  wwwOrigin: string,
+  error: OAuthCallbackError,
+  provider: OAuthProviderId,
+  redirectPath: string | null,
+): string {
+  const url = new URL("/login", wwwOrigin);
+  url.searchParams.set("error", error);
+  url.searchParams.set("provider", provider);
+  if (redirectPath !== null) {
+    url.searchParams.set("redirect", redirectPath);
+  }
+
+  return url.toString();
+}
+
+function clearedRoundtripCookies(deployment: Deployment) {
+  const expired = cookieOptions(deployment, 0);
+  return [
+    [STATE_COOKIE, "", expired],
+    [PKCE_COOKIE, "", expired],
+  ] as const;
+}
+
+const SIGNOUT_PATH = "/auth/signout";
+
+/**
+ * Clears the cookie even for expired sessions, so it stays outside the
+ * Authorization middleware.
+ *
+ * CSRF: a cross-site page can POST here without a preflight (a form post or
+ * a no-cors fetch is a CORS "simple request"), and the response's cookie
+ * clear applies even when the Lax session cookie was not sent. Browsers send
+ * `Origin` on every cross-origin POST, so only the serving deployment's www
+ * (and the API itself) may sign out; www's
+ * `fetch(..., { credentials: "include" })` qualifies as is.
+ */
 const signoutRoute = HttpRouter.add(
   "POST",
-  "/auth/signout",
+  SIGNOUT_PATH,
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const scope = cookieScopeFor(request.headers["host"] ?? "");
+    const deployment = deploymentForHost(request.headers["host"] ?? "");
+    if (isCrossSiteRequest(request, [deployment.wwwOrigin, deployment.apiOrigin])) {
+      const error = new Forbidden({ message: "Cross-site sign-out is not allowed." });
+      return HttpServerResponse.jsonUnsafe(
+        { _tag: error._tag, message: error.message },
+        { status: 403 },
+      );
+    }
+
     const token = sessionTokenFrom(request);
     if (token !== null) {
       const auth = yield* AuthService;
-      yield* auth.signOut(token).pipe(Effect.ignore);
+      // Best effort: the cookie is cleared regardless, and a row that
+      // survives a failed delete still expires on its own.
+      yield* auth.signOut(token).pipe(Effect.ignoreCause);
     }
 
     return HttpServerResponse.jsonUnsafe({ ok: true }).pipe(
-      HttpServerResponse.setHeader("set-cookie", cookie(scope, SESSION_COOKIE, "", 0)),
+      HttpServerResponse.setCookiesUnsafe([[SESSION_COOKIE, "", cookieOptions(deployment, 0)]]),
     );
   }),
 );
 
-const oauthRoutesLayer = Layer.mergeAll(
-  githubOAuthStartRoute,
-  githubOAuthCallbackRoute,
-  signoutRoute,
-);
-
-function buildProviderAuthorizeUrl(
-  provider: OAuthProviderId,
-  config: AppConfigShape,
-  redirectUri: string,
-  state: string,
-): string {
-  return buildAuthorizeUrl(config.github, redirectUri, state);
-}
-
-function fetchProviderProfile(
-  provider: OAuthProviderId,
-  code: string,
-  redirectUri: string,
-): Effect.Effect<OAuthProfile, unknown, GitHubClient> {
-  return Effect.gen(function* () {
-    const github = yield* GitHubClient;
-    const accessToken = yield* github.exchangeCode(code, redirectUri);
-    return yield* github.fetchUser(accessToken);
-  });
-}
-
-function currentUserFromRequest(
+/**
+ * A browser request from a page outside `trustedOrigins`. Without `Origin`,
+ * fall back to Fetch Metadata; a request carrying neither did not come from
+ * a browser page, so there is no ambient session to forge.
+ */
+function isCrossSiteRequest(
   request: HttpServerRequest.HttpServerRequest,
-  auth: AuthServiceShape,
-): Effect.Effect<CurrentUser | null, never, any> {
-  const token = sessionTokenFrom(request);
-  if (token === null) {
-    return Effect.succeed(null);
+  trustedOrigins: ReadonlyArray<string>,
+): boolean {
+  const origin = request.headers["origin"];
+  if (origin !== undefined) {
+    return !trustedOrigins.includes(origin);
   }
 
-  return auth.resolveSession(token).pipe(
-    Effect.map((user) => (Option.isSome(user) ? user.value : null)),
-    Effect.catchCause(() => Effect.succeed(null)),
-  );
+  return request.headers["sec-fetch-site"] === "cross-site";
 }
 
-function providerLabel(provider: OAuthProviderId): string {
-  return provider === "github" ? "GitHub" : provider;
+const OAuthRoutesLive = Layer.mergeAll(
+  signoutRoute,
+  ...OAuthProviderId.literals.flatMap((providerId) => [
+    oauthStartRoute(providerId),
+    oauthCallbackRoute(providerId),
+  ]),
+);
+
+/** Every route above, for the router's 405 table (see layer.ts). */
+const OAUTH_ROUTES = [
+  { method: "POST", path: SIGNOUT_PATH },
+  ...OAuthProviderId.literals.flatMap((providerId) => [
+    { method: "GET", path: oauthStartPath(providerId) },
+    { method: "GET", path: oauthCallbackPath(providerId) },
+  ]),
+];
+
+function oauthStartPath(providerId: OAuthProviderId) {
+  return `/auth/${providerId}/start` as const;
+}
+
+function oauthCallbackPath(providerId: OAuthProviderId) {
+  return `/auth/${providerId}/callback` as const;
+}
+
+function callbackUrl(deployment: Deployment, providerId: OAuthProviderId): string {
+  return `${deployment.apiOrigin}${oauthCallbackPath(providerId)}`;
 }
 
 function sanitizeOAuthRedirectPath(value: string | null): string | null {
@@ -218,7 +303,15 @@ function sanitizeOAuthRedirectPath(value: string | null): string | null {
       return null;
     }
 
-    return `${url.pathname}${url.search}${url.hash}`;
+    // Dot-segment normalisation can collapse "/.//evil.com" or
+    // "/a/..//evil.com" into "//evil.com" — protocol-relative once a browser
+    // or router resolves it. Judge the normalised output, not the input.
+    const path = `${url.pathname}${url.search}${url.hash}`;
+    if (path.startsWith("//")) {
+      return null;
+    }
+
+    return path;
   } catch {
     return null;
   }
@@ -229,7 +322,7 @@ function encodeOAuthState(nonce: string, redirectPath: string | null): string {
     return nonce;
   }
 
-  return `${nonce}.${base64UrlEncode(redirectPath)}`;
+  return `${nonce}.${toBase64Url(new TextEncoder().encode(redirectPath))}`;
 }
 
 function redirectPathFromOAuthState(state: string): string | null {
@@ -250,16 +343,6 @@ function defaultOAuthRedirectPath(login: string): string {
   return `/${encodeURIComponent(login)}`;
 }
 
-function base64UrlEncode(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
-}
-
 function base64UrlDecode(value: string): string | null {
   try {
     const padded = value
@@ -277,7 +360,9 @@ function base64UrlDecode(value: string): string | null {
 export {
   encodeOAuthState,
   defaultOAuthRedirectPath,
-  oauthRoutesLayer,
+  oauthErrorLocation,
+  OAUTH_ROUTES,
+  OAuthRoutesLive,
   redirectPathFromOAuthState,
   sanitizeOAuthRedirectPath,
 };

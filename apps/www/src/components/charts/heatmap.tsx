@@ -1,7 +1,12 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 
-import { enumerateDays, formatDay, formatUsd } from "./scale";
-import { ChartTooltip } from "./tooltip";
+import { cn } from "../../lib/cn";
+import { enumerateDays, weekdaySundayFirst } from "../../lib/dates";
+import { formatDay, formatMonth, formatUsd } from "../../lib/format";
+import { maxValue } from "./scale";
+import { segmentTooltipRows, type ChartSegment } from "./series";
+import { ChartLiveRegion, ChartTooltip } from "./tooltip";
+import { CHART_FOCUS_CLASS_NAME, useChartCursor, type CursorSteps } from "./use-chart-cursor";
 
 /**
  * GitHub-style activity heatmap: daily spend intensity, weeks left to
@@ -10,18 +15,12 @@ import { ChartTooltip } from "./tooltip";
 
 interface HeatmapProps {
   /** date -> spend */
-  byDate: Map<string, number>;
+  byDate: ReadonlyMap<string, number>;
   first: string;
+  /** The day to bring into view on narrow screens, e.g. the latest usage. */
+  focus: string;
   last: string;
-  segmentsByDate: Map<string, { color: string; series: string; value: number }[]>;
-}
-
-interface HoveredCell {
-  day: string;
-  /** Pixel position of the cell within the rendered chart container. */
-  left: number;
-  top: number;
-  value: number;
+  segmentsByDate: ReadonlyMap<string, ChartSegment[]>;
 }
 
 const CELL = 11;
@@ -30,16 +29,38 @@ const LEFT = 28;
 const TOP = 16;
 /** Fixed green tint; rendered at varying opacity by intensity. */
 const ACCENT = "#22c55e";
+const OPACITIES = [0, 0.25, 0.5, 0.75, 1] as const;
+/** Columns are weeks and rows are weekdays, so ←/→ move a week and ↑/↓ a day. */
+const HEATMAP_STEPS: CursorSteps = {
+  ArrowDown: 1,
+  ArrowLeft: -7,
+  ArrowRight: 7,
+  ArrowUp: -1,
+};
 
-function Heatmap({ byDate, first, last, segmentsByDate }: HeatmapProps) {
+function Heatmap({ byDate, first, focus, last, segmentsByDate }: HeatmapProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const [hovered, setHovered] = useState<HoveredCell | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
 
-  const { cells, max, monthLabels, weeks } = useMemo(() => {
-    const allDays = enumerateDays(first, last);
-    // Pad so the first column starts on Sunday (UTC day-of-week).
-    const firstDow = new Date(`${first}T00:00:00Z`).getUTCDay();
-    const padded: (string | null)[] = [...Array.from({ length: firstDow }, () => null), ...allDays];
+  // When the year overflows (phones), open on the focus day, not January.
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    const cell = scroller?.querySelector<SVGRectElement>(`[data-day="${focus}"]`);
+    if (scroller === null || cell === null || cell === undefined) {
+      return;
+    }
+
+    scroller.scrollLeft += scrollOffsetToReveal(
+      scroller.getBoundingClientRect(),
+      cell.getBoundingClientRect(),
+    );
+  }, [focus]);
+
+  const { allDays, cells, leadingBlanks, max, monthLabels, weeks } = useMemo(() => {
+    const days = enumerateDays(first, last);
+    // Pad so the first column starts on Sunday.
+    const blanks = weekdaySundayFirst(first);
+    const padded: (string | null)[] = [...Array.from({ length: blanks }, () => null), ...days];
     const weekCount = Math.ceil(padded.length / 7);
     const grid = Array.from({ length: weekCount }, (_, week) =>
       Array.from({ length: 7 }, (_, dow) => padded[week * 7 + dow] ?? null),
@@ -49,20 +70,34 @@ function Heatmap({ byDate, first, last, segmentsByDate }: HeatmapProps) {
     grid.forEach((column, week) => {
       const firstOfMonth = column.find((day) => day?.endsWith("-01"));
       if (firstOfMonth !== undefined && firstOfMonth !== null) {
-        labels.push({ label: formatDay(firstOfMonth).split(" ")[1] ?? "", week });
+        labels.push({ label: formatMonth(firstOfMonth), week });
       }
     });
-    if (labels.length === 0 && allDays[0] !== undefined) {
-      labels.push({ label: formatDay(allDays[0]).split(" ")[1] ?? "", week: 0 });
+    if (labels.length === 0 && days[0] !== undefined) {
+      labels.push({ label: formatMonth(days[0]), week: 0 });
     }
 
     return {
+      allDays: days,
       cells: grid,
-      max: Math.max(...allDays.map((day) => byDate.get(day) ?? 0), 0),
+      leadingBlanks: blanks,
+      max: maxValue(days, (day) => byDate.get(day) ?? 0),
       monthLabels: labels,
       weeks: weekCount,
     };
   }, [byDate, first, last]);
+
+  const cursor = useChartCursor(allDays.length, HEATMAP_STEPS);
+  const activeDay = cursor.active === null ? undefined : allDays[cursor.active];
+  const activeCell = () =>
+    activeDay === undefined ? null : rootRef.current?.querySelector(`[data-day="${activeDay}"]`);
+
+  // Keep the keyboard-selected day in view; a tapped or hovered one already is.
+  useLayoutEffect(() => {
+    if (cursor.surfaceProps.ref.current?.matches(":focus-visible") === true) {
+      activeCell()?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [activeDay]);
 
   const intensity = (value: number): number => {
     if (value <= 0 || max <= 0) {
@@ -73,23 +108,23 @@ function Heatmap({ byDate, first, last, segmentsByDate }: HeatmapProps) {
     return ratio > 0.75 ? 4 : ratio > 0.5 ? 3 : ratio > 0.25 ? 2 : 1;
   };
 
-  const opacities = [0, 0.25, 0.5, 0.75, 1] as const;
   const width = LEFT + weeks * (CELL + GAP);
   const height = TOP + 7 * (CELL + GAP);
+  const activeValue = activeDay === undefined ? 0 : (byDate.get(activeDay) ?? 0);
 
   return (
-    <div className="relative" ref={rootRef}>
-      <div className="overflow-x-auto">
+    <div className="relative" data-chart-frame="" ref={rootRef}>
+      <div className="overflow-x-auto" ref={scrollerRef}>
         <svg
           aria-label={`Daily spend heatmap from ${formatDay(first)} to ${formatDay(last)}`}
-          className="block h-auto w-full select-none"
+          className={cn("block h-auto w-full select-none", CHART_FOCUS_CLASS_NAME)}
           height={height}
-          onPointerLeave={() => setHovered(null)}
           preserveAspectRatio="xMinYMin meet"
           role="img"
           style={{ minWidth: width }}
           viewBox={`0 0 ${width} ${height}`}
           width={width}
+          {...cursor.surfaceProps}
         >
           {monthLabels.map(({ label, week }) => (
             <text
@@ -118,56 +153,59 @@ function Heatmap({ byDate, first, last, segmentsByDate }: HeatmapProps) {
               if (day === null) {
                 return null;
               }
-              const value = byDate.get(day) ?? 0;
-              const level = intensity(value);
-              const cx = LEFT + week * (CELL + GAP);
-              const cy = TOP + dow * (CELL + GAP);
+              const level = intensity(byDate.get(day) ?? 0);
+              const dayIndex = week * 7 + dow - leadingBlanks;
               return (
                 <rect
+                  data-day={day}
                   fill={level === 0 ? "currentColor" : ACCENT}
                   height={CELL}
                   key={day}
-                  onPointerEnter={(event) => {
-                    const rootRect = rootRef.current?.getBoundingClientRect();
-                    if (rootRect === undefined) {
-                      return;
-                    }
-                    const cellRect = event.currentTarget.getBoundingClientRect();
-                    setHovered({
-                      day,
-                      left: cellRect.left - rootRect.left + cellRect.width / 2,
-                      top: cellRect.top - rootRect.top,
-                      value,
-                    });
-                  }}
-                  opacity={level === 0 ? 0.08 : opacities[level]}
+                  onPointerEnter={() => cursor.setActive(dayIndex)}
+                  opacity={level === 0 ? 0.08 : OPACITIES[level]}
                   width={CELL}
-                  x={cx}
-                  y={cy}
+                  x={LEFT + week * (CELL + GAP)}
+                  y={TOP + dow * (CELL + GAP)}
                 />
               );
             }),
           )}
         </svg>
       </div>
-      {hovered !== null ? (
-        <ChartTooltip
-          className="w-56 -translate-x-1/2 -translate-y-full"
-          rows={(segmentsByDate.get(hovered.day) ?? [])
-            .filter((segment) => segment.value > 0)
-            .sort((a, b) => b.value - a.value)
-            .map((segment) => ({
-              color: segment.color,
-              label: segment.series,
-              value: formatUsd(segment.value),
-            }))}
-          style={{ left: `${hovered.left}px`, top: `${hovered.top - 4}px` }}
-          subtitle={hovered.value > 0 ? `${formatUsd(hovered.value)} spent` : "No spend"}
-          title={formatDay(hovered.day)}
-        />
-      ) : null}
+      <ChartLiveRegion>
+        {activeDay !== undefined ? (
+          <ChartTooltip
+            anchor={activeCell}
+            offset={4}
+            rows={segmentTooltipRows(segmentsByDate.get(activeDay) ?? [], (segment) =>
+              formatUsd(segment.value),
+            )}
+            subtitle={activeValue > 0 ? `${formatUsd(activeValue)} spent` : "No spend"}
+            title={formatDay(activeDay)}
+          />
+        ) : null}
+      </ChartLiveRegion>
     </div>
   );
 }
 
-export { Heatmap };
+/**
+ * Horizontal scroll that brings `cell` fully into `viewport`, plus one
+ * column of context when it had to scroll; 0 if already visible.
+ */
+function scrollOffsetToReveal(
+  viewport: { left: number; right: number },
+  cell: { left: number; right: number },
+): number {
+  const trailing = CELL + GAP;
+  if (cell.right > viewport.right) {
+    return cell.right - viewport.right + trailing;
+  }
+  if (cell.left < viewport.left) {
+    return cell.left - viewport.left - trailing;
+  }
+
+  return 0;
+}
+
+export { Heatmap, scrollOffsetToReveal };

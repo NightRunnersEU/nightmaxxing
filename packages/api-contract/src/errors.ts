@@ -1,76 +1,224 @@
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+
+import { DeviceId, TokenId, UserId } from "./schemas";
 
 /**
  * Wire-level error catalog. Every error that crosses the HTTP boundary is a
- * Schema.TaggedErrorClass whose `httpApiStatus` annotation drives the
+ * Schema.TaggedError whose `httpApiStatus` annotation drives the
  * response status; the body is the encoded tagged struct ({ _tag, ...fields }).
  * Services fail with these directly — handlers declare them per endpoint and
- * pass them through untouched. Store/decode/infrastructure failures are NOT
- * here: those are defects (500) the services convert at their boundary.
+ * pass them through untouched. Store/decode/infrastructure failures are
+ * defects the services convert at their boundary; the server renders them as
+ * InternalServerError (or ServiceUnavailable while resolving credentials).
+ *
+ * The request-level errors (BadRequest, PayloadTooLarge, UnsupportedMediaType,
+ * RouteNotFound, MethodNotAllowed, TooManyRequests, InternalServerError,
+ * ServiceUnavailable) are produced by
+ * the server's HTTP stack rather than by services, so every non-2xx response
+ * shares the same `{ _tag, message }` envelope.
+ *
+ * Every error carries a human-readable `message`, defaulted per class so call
+ * sites only override it when they know more. Adding it was safe for released
+ * CLIs (their frozen decoders ignore unknown fields); wire `_tag`s are frozen,
+ * because CLIs branch on them.
  */
 
-class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()(
+function message(text: string) {
+  return Schema.String.pipe(Schema.withConstructorDefault(Effect.succeed(text)));
+}
+
+class Unauthorized extends Schema.TaggedError<Unauthorized>()(
   "Unauthorized",
-  { message: Schema.String },
+  { message: message("Sign in required.") },
   { httpApiStatus: 401 },
 ) {}
 
-class Forbidden extends Schema.TaggedErrorClass<Forbidden>()(
+class Forbidden extends Schema.TaggedError<Forbidden>()(
   "Forbidden",
-  { message: Schema.String },
+  { message: message("You do not have access to this.") },
   { httpApiStatus: 403 },
 ) {}
 
-class UserNotFound extends Schema.TaggedErrorClass<UserNotFound>()(
+class UserNotFound extends Schema.TaggedError<UserNotFound>()(
   "UserNotFound",
-  { login: Schema.String },
+  { login: Schema.String, message: message("User not found.") },
   { httpApiStatus: 404 },
 ) {}
 
-class AdminUserNotFound extends Schema.TaggedErrorClass<AdminUserNotFound>()(
+class AdminUserNotFound extends Schema.TaggedError<AdminUserNotFound>()(
   "AdminUserNotFound",
-  { id: Schema.String },
+  { id: UserId, message: message("User not found.") },
   { httpApiStatus: 404 },
 ) {}
 
-class LoginCodeNotFound extends Schema.TaggedErrorClass<LoginCodeNotFound>()(
+class LoginCodeNotFound extends Schema.TaggedError<LoginCodeNotFound>()(
   "LoginCodeNotFound",
-  { code: Schema.String },
+  {
+    code: Schema.String,
+    message: message("Login code not found; run `nightmaxxing login` again."),
+  },
   { httpApiStatus: 404 },
 ) {}
 
-class LoginCodeExpired extends Schema.TaggedErrorClass<LoginCodeExpired>()(
+class LoginCodeExpired extends Schema.TaggedError<LoginCodeExpired>()(
   "LoginCodeExpired",
-  { code: Schema.String },
+  {
+    code: Schema.String,
+    message: message("Login code expired; run `nightmaxxing login` again."),
+  },
   { httpApiStatus: 410 },
 ) {}
 
-class TokenNotFound extends Schema.TaggedErrorClass<TokenNotFound>()(
+/** Pre-device-code CLI after the legacy login sunset: it must upgrade. */
+class CliUpgradeRequired extends Schema.TaggedError<CliUpgradeRequired>()(
+  "CliUpgradeRequired",
+  { message: message("This CLI is too old to sign in; upgrade nightmaxxing.") },
+  { httpApiStatus: 426 },
+) {}
+
+class TokenNotFound extends Schema.TaggedError<TokenNotFound>()(
   "TokenNotFound",
-  { id: Schema.String },
+  { id: TokenId, message: message("Token not found or already revoked.") },
   { httpApiStatus: 404 },
 ) {}
 
-class DeviceNotFound extends Schema.TaggedErrorClass<DeviceNotFound>()(
+/** A device the signed-in user tried to act on does not exist (or is not theirs). */
+class DeviceNotFound extends Schema.TaggedError<DeviceNotFound>()(
   "DeviceNotFound",
-  { id: Schema.String },
+  { id: DeviceId, message: message("Device not found or already deleted.") },
   { httpApiStatus: 404 },
 ) {}
 
-class DeviceMissing extends Schema.TaggedErrorClass<DeviceMissing>()(
+/**
+ * The CLI's bearer token was minted without a device, so usage cannot be
+ * attributed. The wire tag keeps its original `DeviceMissing` name because
+ * released CLIs decode it.
+ */
+class TokenDeviceUnbound extends Schema.TaggedError<TokenDeviceUnbound>()(
   "DeviceMissing",
-  { message: Schema.String },
+  {
+    message: message("This token has no device; run `nightmaxxing login` to mint a new one."),
+  },
   { httpApiStatus: 400 },
 ) {}
 
-export {
+/** A path parameter, header, query parameter or body failed to decode. The
+ * message names the failing field, never the decoder's internals. */
+class BadRequest extends Schema.TaggedError<BadRequest>()(
+  "BadRequest",
+  { message: message("Invalid request.") },
+  { httpApiStatus: 400 },
+) {}
+
+/** The request body is over the endpoint's size limit; it was never decoded. */
+class PayloadTooLarge extends Schema.TaggedError<PayloadTooLarge>()(
+  "PayloadTooLarge",
+  { message: message("Request body too large.") },
+  { httpApiStatus: 413 },
+) {}
+
+class UnsupportedMediaType extends Schema.TaggedError<UnsupportedMediaType>()(
+  "UnsupportedMediaType",
+  { message: message("Send the request body as application/json.") },
+  { httpApiStatus: 415 },
+) {}
+
+/** No route matches the request path under any method. */
+class RouteNotFound extends Schema.TaggedError<RouteNotFound>()(
+  "RouteNotFound",
+  { message: message("No such endpoint.") },
+  { httpApiStatus: 404 },
+) {}
+
+/** The path exists, but not for this method; the `allow` header lists the
+ * methods that do. */
+class MethodNotAllowed extends Schema.TaggedError<MethodNotAllowed>()(
+  "MethodNotAllowed",
+  { message: message("Method not allowed for this endpoint.") },
+  { httpApiStatus: 405 },
+) {}
+
+/**
+ * A per-client request rate limit tripped (the unauthenticated CLI login
+ * endpoints). Retry after `retryAfterSeconds`, which the response also sends
+ * as a `Retry-After` header. Released CLIs have no decoder for it and fail
+ * the request generically.
+ */
+class TooManyRequests extends Schema.TaggedError<TooManyRequests>()(
+  "TooManyRequests",
+  {
+    message: message("Too many requests; try again shortly."),
+    retryAfterSeconds: Schema.Int,
+  },
+  { httpApiStatus: 429 },
+) {}
+
+/** An unexpected server fault. Details are logged under the response's
+ * x-request-id, never sent. */
+class InternalServerError extends Schema.TaggedError<InternalServerError>()(
+  "InternalServerError",
+  { message: message("Something went wrong on our side; try again later.") },
+  { httpApiStatus: 500 },
+) {}
+
+/**
+ * A dependency (the database) failed while resolving credentials. Distinct
+ * from Unauthorized on purpose: clients must keep their token and retry,
+ * not treat an outage as a revoked login.
+ */
+class ServiceUnavailable extends Schema.TaggedError<ServiceUnavailable>()(
+  "ServiceUnavailable",
+  { message: message("Temporarily unavailable; try again shortly.") },
+  { httpApiStatus: 503 },
+) {}
+
+/** Every wire error class — the single source for the `ApiError` union. */
+const ApiErrors = [
   AdminUserNotFound,
+  BadRequest,
+  CliUpgradeRequired,
   DeviceNotFound,
-  DeviceMissing,
   Forbidden,
+  InternalServerError,
   LoginCodeExpired,
   LoginCodeNotFound,
+  MethodNotAllowed,
+  PayloadTooLarge,
+  RouteNotFound,
+  ServiceUnavailable,
+  TokenDeviceUnbound,
   TokenNotFound,
+  TooManyRequests,
   Unauthorized,
+  UnsupportedMediaType,
+  UserNotFound,
+] as const;
+
+type ApiError = InstanceType<(typeof ApiErrors)[number]>;
+
+type ApiErrorTag = ApiError["_tag"];
+
+export {
+  AdminUserNotFound,
+  ApiErrors,
+  BadRequest,
+  CliUpgradeRequired,
+  DeviceNotFound,
+  Forbidden,
+  InternalServerError,
+  LoginCodeExpired,
+  LoginCodeNotFound,
+  MethodNotAllowed,
+  PayloadTooLarge,
+  RouteNotFound,
+  ServiceUnavailable,
+  TokenDeviceUnbound,
+  TokenNotFound,
+  TooManyRequests,
+  Unauthorized,
+  UnsupportedMediaType,
   UserNotFound,
 };
+
+export type { ApiError, ApiErrorTag };

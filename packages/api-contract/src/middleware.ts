@@ -1,8 +1,15 @@
 import * as Context from "effect/Context";
 import * as HttpApiMiddleware from "effect/unstable/httpapi/HttpApiMiddleware";
 
-import { Unauthorized } from "./errors";
-import { AuthUser, CliIdentity } from "./schemas";
+import {
+  BadRequest,
+  InternalServerError,
+  PayloadTooLarge,
+  ServiceUnavailable,
+  Unauthorized,
+  UnsupportedMediaType,
+} from "./errors";
+import type { AuthUser, CliIdentity } from "./schemas";
 
 /**
  * Middleware DEFINITIONS the contract's groups reference — the server
@@ -10,33 +17,67 @@ import { AuthUser, CliIdentity } from "./schemas";
  * see them only as error surface + OpenAPI metadata.
  */
 
-class CurrentUser extends Context.Service<CurrentUser, typeof AuthUser.Type>()(
+class CurrentUser extends Context.Service<CurrentUser, AuthUser>()(
   "@nightmaxxing/api/CurrentUser",
 ) {}
 
 /**
  * Browser authentication: the session cookie (or a bearer session token).
+ * A `tmx_` CLI token is rejected unless the endpoint opts in with
+ * `AllowCliToken` — CLI tokens must never reach admin, CLI-login approval
+ * (which mints more tokens), or device/token management.
  * Deliberately NOT an HttpApiSecurity-scheme middleware: the builder's
  * scheme fall-through re-runs the wrapped handler per scheme and replaces
  * its domain failures with the last scheme's decode error.
+ *
+ * Unauthorized means the credential is missing, unknown, revoked or expired;
+ * ServiceUnavailable means it could not be checked (keep it and retry).
  */
 class Authorization extends HttpApiMiddleware.Service<Authorization, { provides: CurrentUser }>()(
   "@nightmaxxing/api/Authorization",
   {
-    error: Unauthorized,
+    error: [Unauthorized, ServiceUnavailable],
   },
 ) {}
 
-class CurrentCliIdentity extends Context.Service<CurrentCliIdentity, typeof CliIdentity.Type>()(
+/**
+ * Endpoint annotation: lets `Authorization` accept a `tmx_` CLI token as the
+ * account it belongs to. Default false — opt in only for read-only identity
+ * endpoints the CLI calls (`nightmaxxing whoami`, auth validation).
+ */
+const AllowCliToken = Context.Reference<boolean>("@nightmaxxing/api/AllowCliToken", {
+  defaultValue: () => false,
+});
+
+class CurrentCliIdentity extends Context.Service<CurrentCliIdentity, CliIdentity>()(
   "@nightmaxxing/api/CurrentCliIdentity",
 ) {}
 
-/** CLI authentication: a `Bearer tmx_…` token resolved against cli_tokens. */
+/**
+ * CLI authentication: a `Bearer tmx_…` token resolved against cli_tokens.
+ * Unauthorized only when the token is missing, unknown or revoked — the CLI
+ * discards its token on it — and ServiceUnavailable when the lookup failed.
+ */
 class CliAuth extends HttpApiMiddleware.Service<CliAuth, { provides: CurrentCliIdentity }>()(
   "@nightmaxxing/api/CliAuth",
   {
-    error: Unauthorized,
+    error: [Unauthorized, ServiceUnavailable],
   },
 ) {}
 
-export { Authorization, CliAuth, CurrentCliIdentity, CurrentUser };
+/**
+ * Applied to every endpoint: turns request decode failures into BadRequest,
+ * an unsupported request content-type into UnsupportedMediaType, and
+ * unexpected server faults into InternalServerError, so these render as
+ * typed `{ _tag, message }` bodies like every other contract error.
+ * PayloadTooLarge is declared here so clients decode it, but the server's
+ * body-limit middleware answers it before the endpoint reads the body.
+ */
+class ErrorBoundary extends HttpApiMiddleware.Service<ErrorBoundary>()(
+  "@nightmaxxing/api/ErrorBoundary",
+  {
+    error: [BadRequest, PayloadTooLarge, UnsupportedMediaType, InternalServerError],
+  },
+) {}
+
+export { AllowCliToken, Authorization, CliAuth, CurrentCliIdentity, CurrentUser, ErrorBoundary };

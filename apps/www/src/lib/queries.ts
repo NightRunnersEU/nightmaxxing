@@ -1,53 +1,75 @@
-import { queryOptions } from "@tanstack/react-query";
+import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import type { LeaderboardMetric, LeaderboardWindow } from "@nightmaxxing/api-contract";
 
-import { runApi } from "./api";
+import { fetchViewer, runApi } from "./api";
 
 /**
  * queryOptions for every server read — components compose these with
- * useQuery/useMutation; query keys are the single source of cache identity.
+ * useQuery/useMutation. `queryKeys` is the single source of cache identity;
+ * invalidate through it (or `invalidatePublicViews`) rather than literals.
  */
 
+const queryKeys = {
+  adminUsers: ["admin", "users"],
+  /** A pending CLI login's device details, by its user code. */
+  cliLoginRequest: (code: string) => ["me", "cliLogin", code] as const,
+  devices: ["me", "devices"],
+  leaderboard: ["leaderboard"],
+  leaderboardList: (metric: LeaderboardMetric, window: LeaderboardWindow) =>
+    ["leaderboard", metric, window] as const,
+  me: ["me"],
+  /** Prefix of both the profile summary and its daily rows. */
+  profile: (login: string) => ["profile", login] as const,
+  profileDaily: (login: string) => ["profile", login, "daily"] as const,
+  stats: ["stats"],
+  tokens: ["me", "tokens"],
+} as const;
+
+/** The signed-in viewer; `null` when signed out. The root loader resolves it during SSR. */
 const meQueryOptions = queryOptions({
-  queryKey: ["me"],
-  queryFn: () => runApi((client) => client.me.me()),
+  queryKey: queryKeys.me,
+  queryFn: fetchViewer,
   retry: false,
   staleTime: 60_000,
 });
 
+/**
+ * The viewer for a signed-in-only page. A cached signed-in answer is trusted
+ * (the API rejects an expired session anyway), but a cached "signed out" is
+ * re-checked, since signing in happens in another tab or a full-page OAuth
+ * round trip.
+ */
+function ensureViewer(queryClient: QueryClient) {
+  return queryClient.getQueryData(queryKeys.me) === null
+    ? queryClient.fetchQuery({ ...meQueryOptions, staleTime: 0 })
+    : queryClient.ensureQueryData(meQueryOptions);
+}
+
 const devicesQueryOptions = queryOptions({
-  queryKey: ["me", "devices"],
+  queryKey: queryKeys.devices,
   queryFn: () => runApi((client) => client.me.listDevices()),
 });
 
-const accountsQueryOptions = queryOptions({
-  queryKey: ["me", "accounts"],
-  queryFn: () => runApi((client) => client.me.listAccounts()),
-});
-
 const tokensQueryOptions = queryOptions({
-  queryKey: ["me", "tokens"],
+  queryKey: queryKeys.tokens,
   queryFn: () => runApi((client) => client.me.listTokens()),
 });
 
 const adminUsersQueryOptions = queryOptions({
-  queryKey: ["admin", "users"],
+  queryKey: queryKeys.adminUsers,
   queryFn: () => runApi((client) => client.admin.listUsers()),
   staleTime: 30_000,
 });
 
 const statsQueryOptions = queryOptions({
-  queryKey: ["stats"],
+  queryKey: queryKeys.stats,
   queryFn: () => runApi((client) => client.stats.get()),
   staleTime: 30_000,
 });
 
-function leaderboardQueryOptions(
-  metric: typeof LeaderboardMetric.Type,
-  window: typeof LeaderboardWindow.Type,
-) {
+function leaderboardQueryOptions(metric: LeaderboardMetric, window: LeaderboardWindow) {
   return queryOptions({
-    queryKey: ["leaderboard", metric, window],
+    queryKey: queryKeys.leaderboardList(metric, window),
     queryFn: () => runApi((client) => client.leaderboard.list({ query: { metric, window } })),
     staleTime: 30_000,
   });
@@ -55,29 +77,54 @@ function leaderboardQueryOptions(
 
 function profileQueryOptions(login: string) {
   return queryOptions({
-    queryKey: ["profile", login],
+    queryKey: queryKeys.profile(login),
     queryFn: () => runApi((client) => client.profiles.get({ params: { login } })),
     staleTime: 30_000,
   });
 }
 
+function cliLoginRequestQueryOptions(code: string) {
+  return queryOptions({
+    queryKey: queryKeys.cliLoginRequest(code),
+    queryFn: () => runApi((client) => client.me.describeCliLogin({ query: { code } })),
+    retry: false,
+  });
+}
+
 function profileDailyQueryOptions(login: string) {
   return queryOptions({
-    queryKey: ["profile", login, "daily"],
+    queryKey: queryKeys.profileDaily(login),
     queryFn: () =>
       runApi((client) => client.profiles.daily({ params: { login }, query: { groupBy: "model" } })),
     staleTime: 30_000,
   });
 }
 
+/**
+ * Refresh every public surface a usage or visibility change can move: the
+ * leaderboard, aggregate stats, and (when known) the affected profile.
+ */
+async function invalidatePublicViews(queryClient: QueryClient, login?: string): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.leaderboard }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.stats }),
+    login === undefined
+      ? undefined
+      : queryClient.invalidateQueries({ queryKey: queryKeys.profile(login) }),
+  ]);
+}
+
 export {
   adminUsersQueryOptions,
-  accountsQueryOptions,
+  cliLoginRequestQueryOptions,
   devicesQueryOptions,
+  ensureViewer,
+  invalidatePublicViews,
   leaderboardQueryOptions,
   meQueryOptions,
   profileDailyQueryOptions,
   profileQueryOptions,
+  queryKeys,
   statsQueryOptions,
   tokensQueryOptions,
 };

@@ -1,0 +1,108 @@
+import type { ProfileDailyResponse } from "@nightmaxxing/api-contract";
+
+import type { MonthPoint } from "../../../components/charts/month-bars";
+import {
+  bucketSeries,
+  buildSegments,
+  buildStackedSeriesCharts,
+  type ChartSegment,
+  type StackedSeriesChart,
+} from "../../../components/charts/series";
+import {
+  calendarYearEnd,
+  calendarYearStart,
+  enumerateDays,
+  enumerateMonths,
+  weekdayMondayFirst,
+} from "../../../lib/dates";
+
+/** Pure view-model for the profile dashboard's charts. */
+
+type DailyResponse = typeof ProfileDailyResponse.Type;
+type DailyRow = DailyResponse["days"][number];
+type DailyRange = DailyResponse["range"];
+
+interface ProfileCharts {
+  /** The calendar year containing the range's last day, opened on that day. */
+  heatmap: { first: string; focus: string; last: string };
+  months: MonthPoint[];
+  /** Per-day spend segments for the heatmap tooltip. */
+  segmentsByDate: Map<string, ChartSegment[]>;
+  spend: StackedSeriesChart;
+  /** date -> total spend. */
+  spendByDate: Map<string, number>;
+  /** Monday-first: [0] = Mon … [6] = Sun. */
+  spendByWeekday: number[];
+  tokens: StackedSeriesChart;
+  /** Per-month token totals, stacked by the token chart's model ranking. */
+  tokenMonths: MonthPoint[];
+}
+
+function deriveProfileCharts(rows: readonly DailyRow[], range: DailyRange): ProfileCharts {
+  const days = enumerateDays(range.firstDate, range.lastDate);
+  const {
+    charts: { spend, tokens },
+    colors,
+  } = buildStackedSeriesCharts(rows, days, {
+    spend: (row) => row.spendUsd,
+    tokens: (row) => row.totalTokens,
+  });
+  const spendOrder = spend.selection.order;
+  const tokenOrder = tokens.selection.order;
+
+  const spendByWeekday = [0, 0, 0, 0, 0, 0, 0];
+  for (const row of rows) {
+    const weekday = weekdayMondayFirst(row.date);
+    spendByWeekday[weekday] = (spendByWeekday[weekday] ?? 0) + row.spendUsd;
+  }
+
+  const segmentsByDate = new Map(
+    [...spend.buckets.values.entries()].map(([date, values]) => [
+      date,
+      buildSegments(spendOrder, colors, values),
+    ]),
+  );
+
+  const byMonth = bucketSeries(
+    rows,
+    spend.selection,
+    (row) => row.spendUsd,
+    (row) => row.date.slice(0, 7),
+  );
+  const months = enumerateMonths(range.firstDate, range.lastDate).map((month) => ({
+    month,
+    segments: buildSegments(spendOrder, colors, byMonth.values.get(month)),
+    value: byMonth.totals.get(month) ?? 0,
+  }));
+
+  const tokensByMonth = bucketSeries(
+    rows,
+    tokens.selection,
+    (row) => row.totalTokens,
+    (row) => row.date.slice(0, 7),
+  );
+  const tokenMonths = enumerateMonths(range.firstDate, range.lastDate).map((month) => ({
+    month,
+    segments: buildSegments(tokenOrder, colors, tokensByMonth.values.get(month)),
+    value: tokensByMonth.totals.get(month) ?? 0,
+  }));
+
+  return {
+    heatmap: {
+      first: calendarYearStart(range.lastDate),
+      focus: range.lastDate,
+      last: calendarYearEnd(range.lastDate),
+    },
+    months,
+    segmentsByDate,
+    spend,
+    spendByDate: spend.buckets.totals,
+    spendByWeekday,
+    tokenMonths,
+    tokens,
+  };
+}
+
+export { deriveProfileCharts };
+
+export type { DailyRange, DailyRow, ProfileCharts };

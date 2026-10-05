@@ -1,196 +1,291 @@
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { Effect, Layer } from "effect";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DatabaseSync } from "node:sqlite";
 
-import { Drizzle } from "./database";
+import { Effect, Layer } from "effect";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+
 import { LeaderboardRepositoryLive } from "./leaderboard/d1";
 import { LeaderboardRepository } from "./leaderboard/service";
 import { ProfilesRepositoryLive } from "./profiles/d1";
 import { ProfilesRepository } from "./profiles/service";
 import { StatsRepositoryLive } from "./stats/d1";
 import { StatsRepository } from "./stats/service";
+import { makeTestDatabase, type TestDatabase } from "./testing/sqlite-d1";
+import { buildService } from "./testing/effect";
+import { seedUsage, seedUser } from "./testing/seed";
+
+const until = "2026-09-23";
 
 describe("public usage visibility", () => {
+  let database: TestDatabase;
   let sqlite: DatabaseSync;
 
   beforeEach(() => {
-    sqlite = new DatabaseSync(":memory:");
-    sqlite.exec(`
-      create table users (
-        id text primary key,
-        login text not null unique,
-        name text,
-        avatar_url text,
-        shadow_banned_at integer,
-        shadow_banned_by_user_id text,
-        created_at integer not null,
-        updated_at integer not null
-      );
-      create table usage_days (
-        device_id text not null,
-        user_id text not null,
-        date text not null,
-        source text not null,
-        model text not null,
-        input_tokens integer not null default 0,
-        output_tokens integer not null default 0,
-        cache_creation_tokens integer not null default 0,
-        cache_read_tokens integer not null default 0,
-        total_tokens integer not null default 0,
-        cost_usd real not null default 0,
-        synced_at integer not null,
-        primary key (device_id, date, source, model)
-      );
-    `);
+    database = makeTestDatabase();
+    sqlite = database.sqlite;
 
-    const insertUser = sqlite.prepare(
-      `insert into users (
-        id, login, name, avatar_url, shadow_banned_at, shadow_banned_by_user_id,
-        created_at, updated_at
-      ) values (?, ?, null, null, ?, ?, 0, 0)`,
-    );
-    insertUser.run("visible", "visible", null, null);
-    insertUser.run("banned", "banned", 1, "admin");
+    seedUser(sqlite, { id: "visible" });
+    seedUser(sqlite, { id: "banned", shadowBannedAt: 1, shadowBannedByUserId: "admin" });
 
-    const insertUsage = sqlite.prepare(
-      `insert into usage_days (
-        device_id, user_id, date, source, model, input_tokens, output_tokens,
-        cache_creation_tokens, cache_read_tokens, total_tokens, cost_usd, synced_at
-      ) values (?, ?, '2026-07-09', ?, ?, 0, 0, 0, 0, ?, ?, 0)`,
-    );
-    insertUsage.run("visible-device", "visible", "codex", "visible-model", 100, 1);
-    insertUsage.run("banned-device", "banned", "fake-source", "fake-model", 10_000, 100);
+    seedUsage(sqlite, {
+      costUsd: 1,
+      date: "2026-07-09",
+      deviceId: "visible-device",
+      model: "visible-model",
+      source: "codex",
+      totalTokens: 100,
+      userId: "visible",
+    });
+    seedUsage(sqlite, {
+      costUsd: 100,
+      date: "2026-07-09",
+      deviceId: "banned-device",
+      model: "fake-model",
+      source: "fake-source",
+      totalTokens: 10_000,
+      userId: "banned",
+    });
   });
 
-  afterEach(() => sqlite.close());
+  afterEach(() => database.close());
 
   it("excludes banned usage from every leaderboard and stats branch, then restores it", async () => {
-    const drizzleLayer = Drizzle.layer({ raw: Effect.succeed(d1Database(sqlite)) });
-    const leaderboard = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* LeaderboardRepository;
-      }).pipe(Effect.provide(LeaderboardRepositoryLive.pipe(Layer.provide(drizzleLayer)))),
+    const leaderboard = await buildService(
+      LeaderboardRepository,
+      LeaderboardRepositoryLive.pipe(Layer.provide(database.drizzleLayer)),
     );
-    const stats = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* StatsRepository;
-      }).pipe(Effect.provide(StatsRepositoryLive.pipe(Layer.provide(drizzleLayer)))),
+    const stats = await buildService(
+      StatsRepository,
+      StatsRepositoryLive.pipe(Layer.provide(database.drizzleLayer)),
     );
-    const profiles = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* ProfilesRepository;
-      }).pipe(Effect.provide(ProfilesRepositoryLive.pipe(Layer.provide(drizzleLayer)))),
+    const profiles = await buildService(
+      ProfilesRepository,
+      ProfilesRepositoryLive.pipe(Layer.provide(database.drizzleLayer)),
     );
 
-    const entries = await run(leaderboard.list({ limit: 10, metric: "tokens", since: null }));
-    const visibleRank = await run(
-      profiles.leaderboardRank({ since: "2026-06-10", userId: "visible" }),
+    const entries = await Effect.runPromise(
+      leaderboard.list({ limit: 10, metric: "tokens", since: null, until }),
     );
-    const bannedRank = await run(
-      profiles.leaderboardRank({ since: "2026-06-10", userId: "banned" }),
+    const visibleRank = await Effect.runPromise(
+      profiles.leaderboardRank({ since: "2026-06-10", until, userId: "visible" }),
     );
-    const hidden = await run(stats.snapshot({ last30dSince: "2026-06-10", limit: 10 }));
+    const bannedRank = await Effect.runPromise(
+      profiles.leaderboardRank({ since: "2026-06-10", until, userId: "banned" }),
+    );
+    const hidden = await Effect.runPromise(
+      stats.snapshot({
+        limit: 10,
+        until,
+        windows: { last30d: "2026-06-10", ytd: "2026-01-01" },
+      }),
+    );
 
     expect(entries.map((entry) => [entry.rank, entry.user.login])).toEqual([[1, "visible"]]);
     expect(visibleRank).toBe(1);
     expect(bannedRank).toBeNull();
-    expect(hidden.allTime).toMatchObject({
+    expect(hidden.windows.ytd.totals).toMatchObject({
       deviceCount: 1,
       rowCount: 1,
-      totalSpendUsd: 1,
+      spendUsd: 1,
       totalTokens: 100,
       userCount: 1,
     });
-    expect(hidden.daily).toEqual([
-      { date: "2026-07-09", spendUsd: 1, totalTokens: 100, userCount: 1 },
-    ]);
-    expect(hidden.dailyByModel.map((row) => row.key)).toEqual(["visible-model"]);
-    expect(hidden.sources.allTime.map((row) => row.key)).toEqual(["codex"]);
-    expect(hidden.topModels.allTimeByTokens.map((row) => row.key)).toEqual(["visible-model"]);
-    expect(hidden.topUsers.byTokens.map((row) => row.user.login)).toEqual(["visible"]);
-    expect(hidden.peaks.tokens).toMatchObject({ totalTokens: 100, userCount: 1 });
+    for (const window of Object.values(hidden.windows)) {
+      expect(window.dailyByModel).toEqual([
+        { date: "2026-07-09", key: "visible-model", rowCount: 1, spendUsd: 1, totalTokens: 100 },
+      ]);
+      expect(window.sources.map((row) => row.key)).toEqual(["codex"]);
+      expect(window.modelsByTokens.map((row) => row.key)).toEqual(["visible-model"]);
+    }
 
     sqlite.prepare("update users set shadow_banned_at = null where id = 'banned'").run();
 
-    const restoredBannedRank = await run(
-      profiles.leaderboardRank({ since: "2026-06-10", userId: "banned" }),
+    const restoredBannedRank = await Effect.runPromise(
+      profiles.leaderboardRank({ since: "2026-06-10", until, userId: "banned" }),
     );
-    const restoredVisibleRank = await run(
-      profiles.leaderboardRank({ since: "2026-06-10", userId: "visible" }),
+    const restoredVisibleRank = await Effect.runPromise(
+      profiles.leaderboardRank({ since: "2026-06-10", until, userId: "visible" }),
     );
-    const restored = await run(stats.snapshot({ last30dSince: "2026-06-10", limit: 10 }));
+    const restored = await Effect.runPromise(
+      stats.snapshot({
+        limit: 10,
+        until,
+        windows: { last30d: "2026-06-10", ytd: "2026-01-01" },
+      }),
+    );
     expect(restoredBannedRank).toBe(1);
     expect(restoredVisibleRank).toBe(2);
-    expect(restored.allTime).toMatchObject({
+    expect(restored.windows.ytd.totals).toMatchObject({
       deviceCount: 2,
       rowCount: 2,
-      totalSpendUsd: 101,
+      spendUsd: 101,
       totalTokens: 10_100,
       userCount: 2,
     });
-    expect(restored.topUsers.byTokens[0]?.user.login).toBe("banned");
+    expect(restored.windows.ytd.modelsByTokens[0]?.key).toBe("fake-model");
   });
 
   it("applies the same date window as the leaderboard", async () => {
     sqlite.prepare("update users set shadow_banned_at = null where id = 'banned'").run();
-    sqlite
-      .prepare(
-        `insert into usage_days (
-          device_id, user_id, date, source, model, input_tokens, output_tokens,
-          cache_creation_tokens, cache_read_tokens, total_tokens, cost_usd, synced_at
-        ) values (
-          'visible-old-device', 'visible', '2026-05-01', 'codex', 'visible-model',
-          0, 0, 0, 0, 1, 1000, 0
-        )`,
-      )
-      .run();
+    seedUsage(sqlite, {
+      costUsd: 1000,
+      date: "2026-05-01",
+      deviceId: "visible-old-device",
+      model: "visible-model",
+      source: "codex",
+      totalTokens: 1,
+      userId: "visible",
+    });
 
-    const drizzleLayer = Drizzle.layer({ raw: Effect.succeed(d1Database(sqlite)) });
-    const profiles = await Effect.runPromise(
-      Effect.gen(function* () {
-        return yield* ProfilesRepository;
-      }).pipe(Effect.provide(ProfilesRepositoryLive.pipe(Layer.provide(drizzleLayer)))),
+    const profiles = await buildService(
+      ProfilesRepository,
+      ProfilesRepositoryLive.pipe(Layer.provide(database.drizzleLayer)),
     );
 
-    const allTimeVisibleRank = await run(
-      profiles.leaderboardRank({ since: null, userId: "visible" }),
+    const allTimeVisibleRank = await Effect.runPromise(
+      profiles.leaderboardRank({ since: null, until, userId: "visible" }),
     );
-    const recentVisibleRank = await run(
-      profiles.leaderboardRank({ since: "2026-06-10", userId: "visible" }),
+    const recentVisibleRank = await Effect.runPromise(
+      profiles.leaderboardRank({ since: "2026-06-10", until, userId: "visible" }),
     );
-    const recentBannedRank = await run(
-      profiles.leaderboardRank({ since: "2026-06-10", userId: "banned" }),
+    const recentBannedRank = await Effect.runPromise(
+      profiles.leaderboardRank({ since: "2026-06-10", until, userId: "banned" }),
     );
 
     expect(allTimeVisibleRank).toBe(1);
     expect(recentVisibleRank).toBe(2);
     expect(recentBannedRank).toBe(1);
   });
+
+  it("exposes only public user fields on leaderboard rows", async () => {
+    seedUser(sqlite, {
+      avatarUrl: "https://avatar.example/tied",
+      id: "tied",
+      login: "tied",
+      name: "Tied",
+    });
+    seedUsage(sqlite, {
+      costUsd: 1,
+      date: "2026-07-08",
+      deviceId: "tied-device",
+      model: "visible-model",
+      source: "codex",
+      totalTokens: 100_000,
+      userId: "tied",
+    });
+    const leaderboard = await buildService(
+      LeaderboardRepository,
+      LeaderboardRepositoryLive.pipe(Layer.provide(database.drizzleLayer)),
+    );
+
+    const [first] = await Effect.runPromise(
+      leaderboard.list({ limit: 10, metric: "tokens", since: "2026-06-10", until }),
+    );
+    // Public rows carry no internal user id.
+    const user = {
+      avatarUrl: "https://avatar.example/tied",
+      login: "tied",
+      name: "Tied",
+    };
+
+    expect(first).toEqual({
+      activeDays: 1,
+      lastDate: "2026-07-08",
+      rank: 1,
+      spendUsd: 1,
+      totalTokens: 100_000,
+      user,
+    });
+  });
 });
 
-function run<A, E>(effect: Effect.Effect<A, E, any>): Promise<A> {
-  return Effect.runPromise(effect as Effect.Effect<A, E, never>);
-}
+describe("future-dated usage rows", () => {
+  let database: TestDatabase;
 
-function d1Database(sqlite: DatabaseSync): D1Database {
-  return {
-    prepare: (query: string) => d1Statement(sqlite, query),
-  } as unknown as D1Database;
-}
+  beforeEach(() => {
+    database = makeTestDatabase();
+    const { sqlite } = database;
+    seedUser(sqlite, { id: "honest" });
+    seedUser(sqlite, { id: "timetraveler" });
+    const usage = (deviceId: string, userId: string, date: string, tokens: number, cost: number) =>
+      seedUsage(sqlite, {
+        costUsd: cost,
+        date,
+        deviceId,
+        model: "gpt-5",
+        totalTokens: tokens,
+        userId,
+      });
+    usage("honest-device", "honest", "2026-09-20", 100, 10);
+    usage("tt-device", "timetraveler", "2026-09-20", 1, 1);
+    usage("tt-device", "timetraveler", "9999-12-31", 1_000_000, 1_000_000);
+  });
 
-function d1Statement(
-  sqlite: DatabaseSync,
-  query: string,
-  parameters: SQLInputValue[] = [],
-): D1PreparedStatement {
-  return {
-    all: async () => ({ results: sqlite.prepare(query).all(...parameters) }),
-    bind: (...values: unknown[]) => d1Statement(sqlite, query, values as SQLInputValue[]),
-    raw: async () => {
-      const statement = sqlite.prepare(query);
-      statement.setReturnArrays(true);
-      return statement.all(...parameters);
-    },
-    run: async () => sqlite.prepare(query).run(...parameters),
-  } as unknown as D1PreparedStatement;
-}
+  afterEach(() => database.close());
+
+  it("never counts rows after the ceiling in any window, stat, or profile", async () => {
+    const leaderboard = await buildService(
+      LeaderboardRepository,
+      LeaderboardRepositoryLive.pipe(Layer.provide(database.drizzleLayer)),
+    );
+    const stats = await buildService(
+      StatsRepository,
+      StatsRepositoryLive.pipe(Layer.provide(database.drizzleLayer)),
+    );
+    const profiles = await buildService(
+      ProfilesRepository,
+      ProfilesRepositoryLive.pipe(Layer.provide(database.drizzleLayer)),
+    );
+
+    for (const since of [null, "2026-08-25", "2026-09-17"]) {
+      const entries = await Effect.runPromise(
+        leaderboard.list({ limit: 10, metric: "spend", since, until }),
+      );
+      expect(entries.map((entry) => [entry.user.login, entry.spendUsd])).toEqual([
+        ["honest", 10],
+        ["timetraveler", 1],
+      ]);
+      expect(
+        await Effect.runPromise(profiles.leaderboardRank({ since, until, userId: "honest" })),
+      ).toBe(1);
+    }
+
+    const snapshot = await Effect.runPromise(
+      stats.snapshot({
+        limit: 10,
+        until,
+        windows: { last30d: "2026-08-25", ytd: "2026-01-01" },
+      }),
+    );
+    for (const window of Object.values(snapshot.windows)) {
+      expect(window.totals).toMatchObject({
+        lastDate: "2026-09-20",
+        spendUsd: 11,
+        totalTokens: 101,
+      });
+    }
+    for (const window of Object.values(snapshot.windows)) {
+      expect(window.dailyByModel.map((row) => row.date)).toEqual(["2026-09-20"]);
+    }
+
+    const profile = await Effect.runPromise(
+      profiles.stats("timetraveler", { today: "2026-09-22", until: "2026-09-23" }),
+    );
+    expect(profile).toMatchObject({
+      activeDays: 1,
+      currentStreakDays: 1,
+      lastDate: "2026-09-20",
+      longestStreakDays: 1,
+      peakDay: { date: "2026-09-20", spendUsd: 1 },
+      spendUsd: 1,
+      totalTokens: 1,
+    });
+    const daily = await Effect.runPromise(
+      profiles.daily("timetraveler", {
+        groupBy: "model",
+        since: "2026-01-01",
+        until: "2026-09-23",
+      }),
+    );
+    expect(daily.map((row) => row.date)).toEqual(["2026-09-20"]);
+  });
+});

@@ -1,22 +1,20 @@
-import { Context } from "effect";
-import { Effect } from "effect";
+import { Context, Effect, Option, Schema } from "effect";
 
-import { DeviceMissing } from "@nightmaxxing/api-contract";
+import { TokenDeviceUnbound, UsageDayInput } from "@nightmaxxing/api-contract";
 import type {
   CliIdentity,
+  DeviceId,
   RawUsageReportInput,
-  ServiceAutoUpdateManagerValue,
-  ServiceAutoUpdateReasonValue,
-  ServiceAutoUpdateStatusValue,
-  ServiceCheckInStatusValue,
-  ServiceRepairReasonValue,
-  ServiceRepairStatusValue,
   SourceUsageStatsInput,
-  UsageDayInput,
+  SyncUsageDayInput,
+  SyncUsageResponse,
+  UsageCheckInInput,
+  UsageSource,
 } from "@nightmaxxing/api-contract";
 
 import { sha256Hex } from "../auth/crypto";
 import type { DatabaseError } from "../database";
+import { latestUsageDateKey } from "../date-keys";
 import {
   parseRawUsageReports,
   PARSER_VERSION,
@@ -31,14 +29,16 @@ import type { RawUsageStorageError } from "./raw-store";
  * structured rows and aggregate source stats are upserted idempotently.
  * Legacy session reports are counted in memory and never persisted. The
  * deviceId always comes from the presenting token, so payloads cannot write
- * into another device's history.
+ * into another device's history. Days later than UTC today + 1 are dropped
+ * (not rejected): a skewed device clock should not block its real history.
+ * Legacy sync rows that fail to decode are dropped the same way, one by one.
  */
 
-interface SyncResult {
-  received: number;
-  syncedAt: string;
-  upserted: number;
-}
+type SyncResult = typeof SyncUsageResponse.Type;
+
+type UsageDevice = (typeof UsageCheckInInput.Type)["device"];
+
+type UsageServiceCheckIn = (typeof UsageCheckInInput.Type)["service"];
 
 interface StoredRawUsageReport {
   ccusageCommand: string;
@@ -55,65 +55,28 @@ interface StoredRawUsageReport {
 
 interface UsageServiceShape {
   checkIn(
-    identity: typeof CliIdentity.Type,
+    identity: CliIdentity,
     device: UsageDevice,
     service: UsageServiceCheckIn,
-  ): Effect.Effect<{ checkedInAt: string }, DeviceMissing, any>;
+  ): Effect.Effect<{ checkedInAt: string }, TokenDeviceUnbound>;
   ingestRaw(
-    identity: typeof CliIdentity.Type,
+    identity: CliIdentity,
     device: UsageDevice,
     reports: readonly RawUsageReportInput[],
     sourceStats?: readonly SourceUsageStatsInput[],
-  ): Effect.Effect<SyncResult, DeviceMissing, any>;
+  ): Effect.Effect<SyncResult, TokenDeviceUnbound>;
   syncBatch(
-    identity: typeof CliIdentity.Type,
+    identity: CliIdentity,
     device: UsageDevice,
-    days: readonly UsageDayInput[],
+    days: readonly SyncUsageDayInput[],
     sourceStats?: readonly SourceUsageStatsInput[],
-  ): Effect.Effect<SyncResult, DeviceMissing, any>;
-}
-
-interface UsageDevice {
-  arch?: string | undefined;
-  name: string;
-  platform: string;
-  version?: string | undefined;
-}
-
-interface UsageServiceCheckIn {
-  autoUpdate?: UsageServiceAutoUpdate | undefined;
-  backend?: string | undefined;
-  error?: string | undefined;
-  reloadRequired?: boolean | undefined;
-  repairAttemptedAt?: string | undefined;
-  repairCompletedAt?: string | undefined;
-  repairError?: string | undefined;
-  repairReason?: ServiceRepairReasonValue | undefined;
-  repairStatus?: ServiceRepairStatusValue | undefined;
-  runnerTarget?: string | undefined;
-  runnerVersion?: string | undefined;
-  schedulerActive?: boolean | undefined;
-  status: ServiceCheckInStatusValue;
-  templateVersion?: number | undefined;
-}
-
-interface UsageServiceAutoUpdate {
-  attemptedAt?: string | null | undefined;
-  completedAt?: string | null | undefined;
-  currentVersion?: string | null | undefined;
-  enabled: boolean;
-  error?: string | null | undefined;
-  installedVersion?: string | null | undefined;
-  latestVersion?: string | null | undefined;
-  manager: ServiceAutoUpdateManagerValue | null;
-  reason: ServiceAutoUpdateReasonValue | null;
-  status: ServiceAutoUpdateStatusValue;
+  ): Effect.Effect<SyncResult, TokenDeviceUnbound>;
 }
 
 interface UsageReplacementScope {
   date: string;
   models: readonly string[];
-  source: string;
+  source: UsageSource;
 }
 
 interface UsageRepositoryShape {
@@ -122,37 +85,40 @@ interface UsageRepositoryShape {
     device: UsageDevice,
     service: UsageServiceCheckIn,
     checkedInAt: Date,
-  ): Effect.Effect<void, DatabaseError, any>;
-  /** One db.batch of single-row upserts (D1 binds ~100 params/statement). */
+  ): Effect.Effect<void, DatabaseError>;
+  /**
+   * One db.batch of single-row upserts (D1 binds ~100 params/statement). An
+   * existing row keeps its stored cost when the token counts are unchanged.
+   */
   upsertChunk(
     userId: string,
     deviceId: string,
     rows: readonly UsageDayInput[],
     syncedAt: Date,
-  ): Effect.Effect<void, DatabaseError, any>;
+  ): Effect.Effect<void, DatabaseError>;
   /** Removes models omitted by an authoritative raw daily report. */
   pruneChunk(
     deviceId: string,
     scopes: readonly UsageReplacementScope[],
     syncedAt: Date,
-  ): Effect.Effect<void, DatabaseError, any>;
+  ): Effect.Effect<void, DatabaseError>;
   touchDevice(
     deviceId: string,
     device: UsageDevice,
     syncedAt: Date,
-  ): Effect.Effect<void, DatabaseError, any>;
+  ): Effect.Effect<void, DatabaseError>;
   upsertSourceStats(
     userId: string,
     deviceId: string,
     stats: readonly SourceUsageStatsInput[],
     syncedAt: Date,
-  ): Effect.Effect<void, DatabaseError, any>;
+  ): Effect.Effect<void, DatabaseError>;
   upsertRawReports(
     userId: string,
     deviceId: string,
     reports: readonly StoredRawUsageReport[],
     capturedAt: Date,
-  ): Effect.Effect<void, DatabaseError | RawUsageStorageError, any>;
+  ): Effect.Effect<void, DatabaseError | RawUsageStorageError>;
 }
 
 class UsageService extends Context.Service<UsageService, UsageServiceShape>()(
@@ -165,13 +131,19 @@ class UsageRepository extends Context.Service<UsageRepository, UsageRepositorySh
 
 const UPSERT_CHUNK_SIZE = 40;
 
-const makeUsageService = Effect.fn("makeUsageService")(function* () {
+/** Strict like every CLI payload: a row with undeclared fields is dropped too. */
+const decodeUsageDay = Schema.decodeUnknownEffect(UsageDayInput, { onExcessProperty: "error" });
+
+const makeUsageService = Effect.fn("makeUsageService")(function* (
+  options: { now?: () => Date } = {},
+) {
   const repository = yield* UsageRepository;
+  const now = options.now ?? (() => new Date());
 
   return UsageService.of({
     checkIn: Effect.fn("UsageService.checkIn")(function* (identity, device, service) {
       const deviceId = yield* requireDeviceId(identity);
-      const checkedInAt = new Date();
+      const checkedInAt = now();
       yield* repository.checkInDevice(deviceId, device, service, checkedInAt).pipe(Effect.orDie);
 
       return {
@@ -185,8 +157,10 @@ const makeUsageService = Effect.fn("makeUsageService")(function* () {
       sourceStats = [],
     ) {
       const deviceId = yield* requireDeviceId(identity);
-      const syncedAt = new Date();
-      const parsed = yield* parseRawUsageReports(reports);
+      const syncedAt = now();
+      const parsed = yield* parseRawUsageReports(reports, {
+        latestDate: latestUsageDateKey(syncedAt),
+      });
       const rawReports = yield* prepareRawReports(
         identity.user.id,
         deviceId,
@@ -222,14 +196,22 @@ const makeUsageService = Effect.fn("makeUsageService")(function* () {
       sourceStats = [],
     ) {
       const deviceId = yield* requireDeviceId(identity);
-      const syncedAt = new Date();
+      const syncedAt = now();
+      const latestDate = latestUsageDateKey(syncedAt);
+      const validDays: UsageDayInput[] = [];
+      for (const day of days) {
+        const decoded = yield* decodeUsageDay(day).pipe(Effect.option);
+        if (Option.isSome(decoded) && decoded.value.date <= latestDate) {
+          validDays.push(decoded.value);
+        }
+      }
 
       const upserted = yield* writeStructuredUsage(
         repository,
         identity.user.id,
         deviceId,
         device,
-        days,
+        validDays,
         sourceStats,
         syncedAt,
       );
@@ -243,17 +225,13 @@ const makeUsageService = Effect.fn("makeUsageService")(function* () {
   });
 });
 
-function requireDeviceId(identity: typeof CliIdentity.Type): Effect.Effect<string, DeviceMissing> {
+function requireDeviceId(identity: CliIdentity): Effect.Effect<DeviceId, TokenDeviceUnbound> {
   const deviceId = identity.deviceId;
   if (deviceId !== null) {
     return Effect.succeed(deviceId);
   }
 
-  return Effect.fail(
-    new DeviceMissing({
-      message: "This token has no device; run `nightmaxxing login` to mint a new one.",
-    }),
-  );
+  return Effect.fail(new TokenDeviceUnbound());
 }
 
 function prepareRawReports(
@@ -319,7 +297,7 @@ function mergeSourceStats(
   legacyStats: readonly SourceUsageStatsInput[],
   explicitStats: readonly SourceUsageStatsInput[],
 ): SourceUsageStatsInput[] {
-  const merged = new Map<string, SourceUsageStatsInput>();
+  const merged = new Map<UsageSource, SourceUsageStatsInput>();
   for (const stat of legacyStats) {
     merged.set(stat.source, stat);
   }
@@ -369,7 +347,7 @@ function buildReplacementScopes(
   coveredDays: readonly CoveredUsageDay[],
   normalizedDays: readonly UsageDayInput[],
 ): UsageReplacementScope[] {
-  const scopes = new Map<string, { date: string; models: Set<string>; source: string }>();
+  const scopes = new Map<string, { date: string; models: Set<string>; source: UsageSource }>();
   for (const coveredDay of coveredDays) {
     scopes.set(JSON.stringify([coveredDay.date, coveredDay.source]), {
       date: coveredDay.date,
@@ -394,7 +372,7 @@ export { makeUsageService, UsageRepository, UsageService };
 
 export type {
   StoredRawUsageReport,
-  SyncResult,
+  UsageDevice,
   UsageReplacementScope,
   UsageRepositoryShape,
   UsageServiceCheckIn,

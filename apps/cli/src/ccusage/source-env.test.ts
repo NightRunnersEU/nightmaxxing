@@ -1,0 +1,462 @@
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+
+import {
+  type SourceDiscoveryFs,
+  ccusageSourceArgs,
+  ccusageSourceEnv,
+  discoverHermesHomes,
+  ompSessionDirs,
+} from "./source-env";
+
+/** In-memory Windows filesystem: `files` and `dirs` are canonical paths. */
+function fakeWindowsFs(options: {
+  blocked?: readonly string[];
+  dirs: Record<string, readonly string[]>;
+  files: readonly string[];
+  realpath?: (path: string) => string;
+}): SourceDiscoveryFs {
+  const lower = (path: string) => path.toLowerCase();
+  const exists = (path: string) =>
+    options.files.some((file) => lower(file) === lower(path)) ||
+    Object.keys(options.dirs).some((dir) => lower(dir) === lower(path));
+
+  return {
+    access: async (path) => {
+      if (options.blocked?.some((blocked) => lower(blocked) === lower(path))) {
+        throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+      }
+    },
+    readdir: async (path) => {
+      const entry = Object.entries(options.dirs).find(([dir]) => lower(dir) === lower(path));
+      if (entry === undefined) {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      }
+      return [...entry[1]];
+    },
+    realpath: async (path) => {
+      if (!exists(path)) {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      }
+      return options.realpath?.(path) ?? path;
+    },
+    stat: async (path) => ({
+      isFile: () => options.files.some((file) => lower(file) === lower(path)),
+    }),
+  };
+}
+
+describe("discoverHermesHomes (POSIX)", () => {
+  let home: string;
+  let hermesRoot: string;
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), "nightmaxxing-hermes-"));
+    hermesRoot = join(home, ".hermes");
+  });
+
+  afterEach(async () => {
+    await rm(home, { force: true, recursive: true });
+  });
+
+  async function hermesState(...segments: string[]) {
+    const dir = join(hermesRoot, ...segments);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "state.db"), "state");
+    return dir;
+  }
+
+  it("lists the default root then profiles in code-unit order", async () => {
+    await hermesState();
+    await hermesState("profiles", "zeta");
+    await hermesState("profiles", "Beta");
+    await hermesState("profiles", "alpha");
+    const root = await realpath(hermesRoot);
+
+    await expect(discoverHermesHomes({ HOME: home }, "linux")).resolves.toBe(
+      ["", "Beta", "alpha", "zeta"]
+        .map((profile) => (profile === "" ? root : join(root, "profiles", profile)))
+        .join(","),
+    );
+  });
+
+  it("includes profiles even when the default root has no state", async () => {
+    await hermesState("profiles", "work");
+    const root = await realpath(hermesRoot);
+
+    await expect(discoverHermesHomes({ HOME: home }, "darwin")).resolves.toBe(
+      join(root, "profiles", "work"),
+    );
+  });
+
+  it("leaves the environment alone when only the default root has state", async () => {
+    await hermesState();
+    await mkdir(join(hermesRoot, "profiles", "empty"), { recursive: true });
+
+    await expect(discoverHermesHomes({ HOME: home }, "linux")).resolves.toBeUndefined();
+  });
+
+  it("leaves the environment alone when Hermes is not installed", async () => {
+    await expect(discoverHermesHomes({ HOME: home }, "linux")).resolves.toBeUndefined();
+    await expect(discoverHermesHomes({}, "linux")).resolves.toBeUndefined();
+  });
+
+  it("keeps an explicit HERMES_HOME and discovers when it is empty", async () => {
+    await hermesState();
+    await hermesState("profiles", "work");
+
+    await expect(
+      discoverHermesHomes({ HERMES_HOME: "/custom/one,/custom/two", HOME: home }, "linux"),
+    ).resolves.toBeUndefined();
+    await expect(discoverHermesHomes({ HERMES_HOME: "", HOME: home }, "linux")).resolves.toContain(
+      ",",
+    );
+  });
+
+  it("dedupes profile aliases and ignores symlinks that escape the Hermes root", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "nightmaxxing-hermes-outside-"));
+    try {
+      const real = await hermesState("profiles", "real");
+      await writeFile(join(outside, "state.db"), "outside");
+      await symlink(real, join(hermesRoot, "profiles", "alias"));
+      await symlink(outside, join(hermesRoot, "profiles", "escape"));
+      await mkdir(join(hermesRoot, "profiles", "linked-state"));
+      await symlink(
+        join(outside, "state.db"),
+        join(hermesRoot, "profiles", "linked-state", "state.db"),
+      );
+
+      await expect(discoverHermesHomes({ HOME: home }, "linux")).resolves.toBe(
+        await realpath(real),
+      );
+    } finally {
+      await rm(outside, { force: true, recursive: true });
+    }
+  });
+
+  it("follows a symlinked Hermes root to its canonical location", async () => {
+    const target = await mkdtemp(join(tmpdir(), "nightmaxxing-hermes-target-"));
+    try {
+      await mkdir(join(target, "profiles", "work"), { recursive: true });
+      await writeFile(join(target, "state.db"), "default");
+      await writeFile(join(target, "profiles", "work", "state.db"), "work");
+      await symlink(target, hermesRoot);
+      const canonical = await realpath(target);
+
+      await expect(discoverHermesHomes({ HOME: home }, "linux")).resolves.toBe(
+        `${canonical},${join(canonical, "profiles", "work")}`,
+      );
+    } finally {
+      await rm(target, { force: true, recursive: true });
+    }
+  });
+
+  it("skips profiles whose paths ccusage cannot split back out", async () => {
+    await hermesState("profiles", "a,comma");
+    await hermesState("profiles", "trailing ");
+    await hermesState("profiles", "with space");
+    await hermesState("profiles", "work");
+    const root = await realpath(hermesRoot);
+
+    await expect(discoverHermesHomes({ HOME: home }, "linux")).resolves.toBe(
+      `${join(root, "profiles", "with space")},${join(root, "profiles", "work")}`,
+    );
+  });
+
+  it("skips non-file state entries and plain files in the profiles directory", async () => {
+    await hermesState("profiles", "work");
+    await mkdir(join(hermesRoot, "profiles", "dir-state", "state.db"), { recursive: true });
+    await writeFile(join(hermesRoot, "profiles", "notes.txt"), "not a profile");
+    const root = await realpath(hermesRoot);
+
+    await expect(discoverHermesHomes({ HOME: home }, "linux")).resolves.toBe(
+      join(root, "profiles", "work"),
+    );
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "skips unreadable profile state",
+    async () => {
+      await hermesState("profiles", "work");
+      const blocked = await hermesState("profiles", "blocked");
+      await chmod(join(blocked, "state.db"), 0o000);
+      const root = await realpath(hermesRoot);
+
+      await expect(discoverHermesHomes({ HOME: home }, "linux")).resolves.toBe(
+        join(root, "profiles", "work"),
+      );
+    },
+  );
+});
+
+describe("discoverHermesHomes (Windows)", () => {
+  const home = "C:\\Users\\alex";
+
+  it("uses USERPROFILE and backslash paths", async () => {
+    const fs = fakeWindowsFs({
+      dirs: {
+        "C:\\Users\\alex\\.hermes": ["profiles", "state.db"],
+        "C:\\Users\\alex\\.hermes\\profiles": ["work"],
+        "C:\\Users\\alex\\.hermes\\profiles\\work": ["state.db"],
+      },
+      files: [
+        "C:\\Users\\alex\\.hermes\\state.db",
+        "C:\\Users\\alex\\.hermes\\profiles\\work\\state.db",
+      ],
+    });
+
+    await expect(
+      discoverHermesHomes({ HOME: "/ignored", USERPROFILE: home }, "win32", fs),
+    ).resolves.toBe("C:\\Users\\alex\\.hermes,C:\\Users\\alex\\.hermes\\profiles\\work");
+  });
+
+  it("compares containment case-insensitively and dedupes case aliases", async () => {
+    const fs = fakeWindowsFs({
+      dirs: {
+        "C:\\Users\\alex\\.hermes": ["profiles"],
+        "C:\\Users\\alex\\.hermes\\profiles": ["WORK", "work"],
+        "C:\\Users\\alex\\.hermes\\profiles\\work": ["state.db"],
+      },
+      files: ["C:\\Users\\alex\\.hermes\\profiles\\work\\state.db"],
+      realpath: (path) =>
+        path.replace("C:\\Users\\alex", "c:\\users\\ALEX").replace("WORK", "work"),
+    });
+
+    await expect(discoverHermesHomes({ USERPROFILE: home }, "win32", fs)).resolves.toBe(
+      "c:\\users\\ALEX\\.hermes\\profiles\\work",
+    );
+  });
+
+  it("skips unreadable state and escapes to another drive", async () => {
+    const fs = fakeWindowsFs({
+      blocked: ["C:\\Users\\alex\\.hermes\\profiles\\blocked\\state.db"],
+      dirs: {
+        "C:\\Users\\alex\\.hermes": ["profiles"],
+        "C:\\Users\\alex\\.hermes\\profiles": ["blocked", "escape", "work"],
+        "C:\\Users\\alex\\.hermes\\profiles\\blocked": ["state.db"],
+        "C:\\Users\\alex\\.hermes\\profiles\\escape": ["state.db"],
+        "C:\\Users\\alex\\.hermes\\profiles\\work": ["state.db"],
+      },
+      files: [
+        "C:\\Users\\alex\\.hermes\\profiles\\blocked\\state.db",
+        "C:\\Users\\alex\\.hermes\\profiles\\escape\\state.db",
+        "C:\\Users\\alex\\.hermes\\profiles\\work\\state.db",
+      ],
+      realpath: (path) =>
+        path.replace("C:\\Users\\alex\\.hermes\\profiles\\escape", "D:\\elsewhere"),
+    });
+
+    await expect(discoverHermesHomes({ USERPROFILE: home }, "win32", fs)).resolves.toBe(
+      "C:\\Users\\alex\\.hermes\\profiles\\work",
+    );
+  });
+
+  it("degrades to the unchanged environment when discovery throws", async () => {
+    const fs: SourceDiscoveryFs = {
+      access: async () => undefined,
+      readdir: async () => {
+        throw new Error("boom");
+      },
+      realpath: async () => {
+        throw new Error("boom");
+      },
+      stat: async () => ({ isFile: () => true }),
+    };
+
+    await expect(discoverHermesHomes({ USERPROFILE: home }, "win32", fs)).resolves.toBeUndefined();
+  });
+});
+
+describe("ccusageSourceEnv", () => {
+  const fs = fakeWindowsFs({
+    dirs: {
+      "C:\\Users\\alex\\.hermes": [],
+      "C:\\Users\\alex\\.hermes\\profiles": ["work"],
+      "C:\\Users\\alex\\.hermes\\profiles\\work": ["state.db"],
+    },
+    files: ["C:\\Users\\alex\\.hermes\\profiles\\work\\state.db"],
+  });
+
+  it("adds discovered Hermes roots only for the Hermes source", async () => {
+    const env = { CODEX_HOME: "D:\\Codex Logs", USERPROFILE: "C:\\Users\\alex" };
+
+    await expect(ccusageSourceEnv("hermes", env, "win32", fs)).resolves.toEqual({
+      ...env,
+      HERMES_HOME: "C:\\Users\\alex\\.hermes\\profiles\\work",
+    });
+    await expect(ccusageSourceEnv("codex", env, "win32", fs)).resolves.toBe(env);
+  });
+});
+
+describe("ompSessionDirs (POSIX)", () => {
+  let home: string;
+
+  beforeEach(async () => {
+    // Canonical, so expectations match the realpaths discovery returns (macOS /var → /private/var).
+    home = await realpath(await mkdtemp(join(tmpdir(), "nightmaxxing-omp-")));
+  });
+
+  afterEach(async () => {
+    await rm(home, { force: true, recursive: true });
+  });
+
+  const sessions = (...segments: string[]) => join(home, ...segments, "sessions");
+
+  it("lists the default sessions dir even before OMP has written any", async () => {
+    await expect(ompSessionDirs({ HOME: home }, "linux")).resolves.toEqual([
+      sessions(".omp", "agent"),
+    ]);
+  });
+
+  it("adds every named profile in code-unit order and skips non-profile entries", async () => {
+    for (const profile of ["work", "a-team", "Upper", ".hidden", "trailing."]) {
+      await mkdir(join(home, ".omp", "profiles", profile), { recursive: true });
+    }
+
+    await expect(ompSessionDirs({ HOME: home }, "linux")).resolves.toEqual([
+      sessions(".omp", "agent"),
+      sessions(".omp", "profiles", "a-team", "agent"),
+      sessions(".omp", "profiles", "work", "agent"),
+    ]);
+  });
+
+  it("follows PI_CONFIG_DIR but never PI_CODING_AGENT_DIR, which Pi shares", async () => {
+    await expect(
+      ompSessionDirs(
+        { HOME: home, PI_CODING_AGENT_DIR: join(home, ".pi", "agent"), PI_CONFIG_DIR: ".omp-dev" },
+        "linux",
+      ),
+    ).resolves.toEqual([sessions(".omp-dev", "agent")]);
+  });
+
+  it("moves to $XDG_DATA_HOME/omp once it exists, per profile", async () => {
+    const xdg = join(home, "xdg");
+    const env = { HOME: home, XDG_DATA_HOME: xdg };
+    await mkdir(join(home, ".omp", "profiles", "work"), { recursive: true });
+    await mkdir(join(home, ".omp", "profiles", "home"), { recursive: true });
+    await expect(ompSessionDirs(env, "linux")).resolves.toEqual([
+      sessions(".omp", "agent"),
+      sessions(".omp", "profiles", "home", "agent"),
+      sessions(".omp", "profiles", "work", "agent"),
+    ]);
+
+    await mkdir(join(xdg, "omp", "profiles", "work"), { recursive: true });
+    await mkdir(join(xdg, "omp", "profiles", "xdg-only"), { recursive: true });
+    await expect(ompSessionDirs(env, "darwin")).resolves.toEqual([
+      join(xdg, "omp", "sessions"),
+      sessions(".omp", "profiles", "home", "agent"),
+      join(xdg, "omp", "profiles", "work", "sessions"),
+      join(xdg, "omp", "profiles", "xdg-only", "sessions"),
+    ]);
+    // A relative XDG_DATA_HOME means nothing to a process in another directory.
+    await expect(ompSessionDirs({ ...env, XDG_DATA_HOME: "xdg" }, "linux")).resolves.toEqual([
+      sessions(".omp", "agent"),
+      sessions(".omp", "profiles", "home", "agent"),
+      sessions(".omp", "profiles", "work", "agent"),
+    ]);
+  });
+
+  it("dedupes a profile symlinked to the default root", async () => {
+    await mkdir(join(home, ".omp", "agent", "sessions"), { recursive: true });
+    await mkdir(join(home, ".omp", "profiles", "real", "agent"), { recursive: true });
+    await symlink(join(home, ".omp"), join(home, ".omp", "profiles", "alias"));
+    await symlink(
+      join(home, ".omp", "profiles", "real"),
+      join(home, ".omp", "profiles", "real-alias"),
+    );
+
+    await expect(ompSessionDirs({ HOME: home }, "linux")).resolves.toEqual([
+      sessions(".omp", "agent"),
+      sessions(".omp", "profiles", "real", "agent"),
+    ]);
+  });
+
+  it("skips dirs ccusage would split on commas", async () => {
+    await mkdir(join(home, ".omp", "profiles", "work"), { recursive: true });
+
+    await expect(ompSessionDirs({ HOME: join(home, "Smith, J") }, "linux")).resolves.toEqual([]);
+  });
+});
+
+describe("ompSessionDirs (Windows)", () => {
+  it("uses USERPROFILE, ignores XDG, and skips paths cmd.exe would expand", async () => {
+    const fs = fakeWindowsFs({
+      dirs: {
+        "C:\\Users\\alex\\.omp\\profiles": ["work", "100%"],
+        "C:\\Users\\alex\\.omp\\profiles\\work": [],
+        "D:\\xdg\\omp": [],
+      },
+      files: [],
+    });
+
+    await expect(
+      ompSessionDirs({ USERPROFILE: "C:\\Users\\alex", XDG_DATA_HOME: "D:\\xdg" }, "win32", fs),
+    ).resolves.toEqual([
+      "C:\\Users\\alex\\.omp\\agent\\sessions",
+      "C:\\Users\\alex\\.omp\\profiles\\work\\agent\\sessions",
+    ]);
+    await expect(ompSessionDirs({ USERPROFILE: "C:\\Users\\100%" }, "win32", fs)).resolves.toEqual(
+      [],
+    );
+  });
+});
+
+describe("Pi and Oh My Pi environments", () => {
+  const fs = fakeWindowsFs({
+    dirs: {
+      "C:\\Users\\alex\\.omp\\agent\\sessions": [],
+      "C:\\Users\\alex\\.omp\\profiles": ["work"],
+      "C:\\Users\\alex\\.omp\\profiles\\work": [],
+    },
+    files: [],
+  });
+  const ompDirs =
+    "C:\\Users\\alex\\.omp\\agent\\sessions,C:\\Users\\alex\\.omp\\profiles\\work\\agent\\sessions";
+  const base = { CODEX_HOME: "D:\\Codex", USERPROFILE: "C:\\Users\\alex" };
+
+  it("points OMP at its own sessions, never the user's PI_AGENT_DIR", async () => {
+    const env = await ccusageSourceEnv(
+      "omp",
+      { ...base, PI_AGENT_DIR: "D:\\pi-sessions" },
+      "win32",
+      fs,
+    );
+
+    expect(env).toEqual({ ...base, PI_AGENT_DIR: ompDirs });
+    expect(ccusageSourceArgs("omp", env)).toEqual(["--pi-path", ompDirs]);
+  });
+
+  it("does not run OMP when no dir can be passed, rather than fall back to Pi's", async () => {
+    const env = await ccusageSourceEnv(
+      "omp",
+      { PI_AGENT_DIR: "D:\\pi-sessions", USERPROFILE: "C:\\Users\\100%" },
+      "win32",
+      fs,
+    );
+
+    expect(env).toEqual({ USERPROFILE: "C:\\Users\\100%" });
+    expect(ccusageSourceArgs("omp", env)).toBeNull();
+  });
+
+  it("drops PI_AGENT_DIR entries that overlap OMP's sessions from Pi", async () => {
+    const piEnv = (PI_AGENT_DIR: string) =>
+      ccusageSourceEnv("pi", { ...base, PI_AGENT_DIR }, "win32", fs);
+
+    await expect(piEnv("c:\\users\\ALEX\\.omp\\agent\\sessions")).resolves.toEqual(base);
+    await expect(
+      piEnv("D:\\pi-sessions, C:\\Users\\alex\\.omp\\profiles\\work\\agent\\sessions\\proj"),
+    ).resolves.toEqual({ ...base, PI_AGENT_DIR: "D:\\pi-sessions" });
+    await expect(piEnv("C:\\Users\\alex")).resolves.toEqual(base);
+    const untouched = { ...base, PI_AGENT_DIR: "D:\\pi-sessions,C:\\Users\\alex\\.omp-notes" };
+    await expect(ccusageSourceEnv("pi", untouched, "win32", fs)).resolves.toBe(untouched);
+    await expect(ccusageSourceEnv("pi", base, "win32", fs)).resolves.toBe(base);
+  });
+
+  it("adds no arguments for other sources", () => {
+    expect(ccusageSourceArgs("pi", { PI_AGENT_DIR: "D:\\pi-sessions" })).toEqual([]);
+    expect(ccusageSourceArgs("codex", base)).toEqual([]);
+  });
+});

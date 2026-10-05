@@ -1,41 +1,26 @@
+import { RuntimeContext } from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
-import { Context } from "effect";
-import { Effect } from "effect";
-import { Layer } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { Context, Effect, Layer, Scope } from "effect";
 
-import { AdminRepositoryLive } from "./admin/d1";
-import { AdminService, makeAdminService } from "./admin/service";
-import { AuthRepositoryLive } from "./auth/d1";
-import { AuthService, makeAuthService } from "./auth/service";
+import { CleanupService } from "./cleanup/service";
 import { Bucket } from "./cloudflare/bucket";
 import { Database } from "./cloudflare/database";
-import { CliLoginRepositoryLive } from "./clilogin/d1";
-import { CliLoginService, makeCliLoginService } from "./clilogin/service";
+import { RateLimiterBindings } from "./cloudflare/rate-limits";
 import { AppConfig } from "./config";
 import { Drizzle } from "./database";
-import { GitHubClient, makeGitHubClient } from "./github/client";
-import { LeaderboardRepositoryLive } from "./leaderboard/d1";
-import { LeaderboardService, makeLeaderboardService } from "./leaderboard/service";
-import { makeProfilesService, ProfilesService } from "./profiles/service";
-import { ProfilesRepositoryLive } from "./profiles/d1";
-import { StatsRepositoryLive } from "./stats/d1";
-import { makeStatsService, StatsService } from "./stats/service";
-import { AuthorizationLive } from "./http/middleware/authorization";
-import { CliAuthLive } from "./http/middleware/cli-auth";
-import { makeApiHttpEffect } from "./http/layer";
-import { makeTokensService, TokensService } from "./tokens/service";
-import { TokensRepositoryLive } from "./tokens/d1";
+import { makeApiFetch } from "./http/layer";
+import { RateLimiter } from "./ratelimit/service";
+import { ServicesLive } from "./services";
 import { RawUsageObjectStore } from "./usage/raw-store";
-import { makeUsageService, UsageService } from "./usage/service";
-import { UsageRepositoryLive } from "./usage/d1";
+
+const CLEANUP_CRON = "17 * * * *";
 
 const ApiWorker = Cloudflare.Worker(
   "api",
   {
     name: "nightmaxxing-api",
     main: import.meta.filename,
-    url: false,
+    workersDev: false,
     compatibility: {
       date: "2026-06-02",
       flags: ["nodejs_compat"],
@@ -52,77 +37,54 @@ const ApiWorker = Cloudflare.Worker(
   Effect.gen(function* () {
     const bucket = yield* Cloudflare.R2.ReadWriteBucket(Bucket);
     const connection = yield* Cloudflare.D1.QueryDatabase(Database);
+    const rateLimiter = yield* RateLimiterBindings;
 
     // Config reads stay in this outer Effect so alchemy's deploy-time
     // binding discovery sees them (secrets bind as secret_text).
     const config = yield* AppConfig.fromEnv;
-    const appConfigLayer = Layer.succeed(AppConfig, config);
-    const drizzleLayer = Drizzle.layer(connection);
-    const rawUsageObjectStoreLayer = RawUsageObjectStore.layer(bucket);
-    const usageRepositoryLayer = UsageRepositoryLive.pipe(
-      Layer.provide(Layer.mergeAll(drizzleLayer, rawUsageObjectStoreLayer)),
+
+    // Binding calls are typed as needing alchemy's RuntimeContext; the
+    // worker runtime supplies it per event, so the phantom only discharges
+    // the type.
+    const InfrastructureLive = Layer.mergeAll(
+      Layer.succeed(AppConfig, config),
+      Layer.succeed(RateLimiter, rateLimiter),
+      Drizzle.layer({ raw: connection.raw.pipe(Effect.provide(RuntimeContext.phantom)) }),
+      RawUsageObjectStore.layer({
+        put: (key, value, options) =>
+          bucket.put(key, value, options).pipe(Effect.provide(RuntimeContext.phantom)),
+        delete: (keys) => bucket.delete(keys).pipe(Effect.provide(RuntimeContext.phantom)),
+      }),
     );
 
-    const auth = yield* makeAuthService().pipe(
-      Effect.provide(AuthRepositoryLive.pipe(Layer.provide(drizzleLayer))),
-    );
-    const cliLogin = yield* makeCliLoginService().pipe(
-      Effect.provide(CliLoginRepositoryLive.pipe(Layer.provide(drizzleLayer))),
-    );
-    const tokens = yield* makeTokensService().pipe(
-      Effect.provide(TokensRepositoryLive.pipe(Layer.provide(drizzleLayer))),
-    );
-    const github = yield* makeGitHubClient().pipe(
-      Effect.provide(FetchHttpClient.layer),
-      Effect.provideService(AppConfig, config),
-    );
-    const usage = yield* makeUsageService().pipe(Effect.provide(usageRepositoryLayer));
-    const admin = yield* makeAdminService({ adminEmails: config.adminEmails }).pipe(
-      Effect.provide(AdminRepositoryLive.pipe(Layer.provide(drizzleLayer))),
-    );
-    const leaderboard = yield* makeLeaderboardService().pipe(
-      Effect.provide(LeaderboardRepositoryLive.pipe(Layer.provide(drizzleLayer))),
-    );
-    const profiles = yield* makeProfilesService().pipe(
-      Effect.provide(ProfilesRepositoryLive.pipe(Layer.provide(drizzleLayer))),
-    );
-    const stats = yield* makeStatsService().pipe(
-      Effect.provide(StatsRepositoryLive.pipe(Layer.provide(drizzleLayer))),
+    // Every domain service, built once per isolate and shared by the cron
+    // and the router. Like the router's, this scope is never closed: the
+    // services must outlive the init closure, and nothing in the graph
+    // registers finalizers that matter at shutdown.
+    const services = yield* Layer.buildWithScope(
+      ServicesLive.pipe(Layer.provideMerge(InfrastructureLive)),
+      yield* Scope.make(),
     );
 
-    // Handlers and raw routes (OAuth) resolve these services at request
-    // time, not layer-build time — this context rides along with every
-    // routed request.
-    const rawRouteServices = Context.empty().pipe(
-      Context.add(AdminService, admin),
-      Context.add(AppConfig, config),
-      Context.add(AuthService, auth),
-      Context.add(CliLoginService, cliLogin),
-      Context.add(GitHubClient, github),
-      Context.add(LeaderboardService, leaderboard),
-      Context.add(ProfilesService, profiles),
-      Context.add(StatsService, stats),
-      Context.add(TokensService, tokens),
-      Context.add(UsageService, usage),
+    // Hourly purge of expired sessions and CLI login requests.
+    const cleanup = Context.get(services, CleanupService);
+    yield* Cloudflare.Workers.cron(CLEANUP_CRON, (controller) =>
+      cleanup.purgeExpired(new Date(controller.scheduledTime)),
     );
 
-    return {
-      fetch: makeApiHttpEffect({
-        adminServiceLayer: Layer.succeed(AdminService, admin),
-        appConfigLayer,
-        authServiceLayer: Layer.succeed(AuthService, auth),
-        cliLoginServiceLayer: Layer.succeed(CliLoginService, cliLogin),
-        drizzleLayer,
-        leaderboardServiceLayer: Layer.succeed(LeaderboardService, leaderboard),
-        profilesServiceLayer: Layer.succeed(ProfilesService, profiles),
-        statsServiceLayer: Layer.succeed(StatsService, stats),
-        middlewareLayer: Layer.mergeAll(AuthorizationLive, CliAuthLive),
-        tokensServiceLayer: Layer.succeed(TokensService, tokens),
-        usageServiceLayer: Layer.succeed(UsageService, usage),
-      }).pipe(Effect.map((apiHttpEffect) => apiHttpEffect.pipe(Effect.provide(rawRouteServices)))),
-    };
+    // Built once per isolate. `fetch` must be the HttpEffect itself: an
+    // Effect-valued `fetch` is re-run by alchemy on every request, which
+    // would rebuild every handler, middleware, CORS and the OpenAPI spec.
+    const fetch = yield* makeApiFetch(Layer.succeedContext(services));
+
+    return { fetch };
   }).pipe(
-    Effect.provide([Cloudflare.D1.QueryDatabaseBinding, Cloudflare.R2.ReadWriteBucketBinding]),
+    Effect.provide([
+      Cloudflare.D1.QueryDatabaseBinding,
+      Cloudflare.R2.ReadWriteBucketBinding,
+      Cloudflare.Workers.CronEventSourceLive,
+      Cloudflare.Workers.RateLimitBinding,
+    ]),
   ),
 );
 
