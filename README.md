@@ -102,6 +102,7 @@ nightmaxxing service status               # Show service health and the last run
 nightmaxxing service doctor               # Check auth, scheduler, locks, and logs (exit 1 on a problem)
 
 nightmaxxing whoami                        # Show the signed-in account
+nightmaxxing stats                         # Your totals, streak, rank and this month
 nightmaxxing upgrade                       # Upgrade the CLI and refresh the service
 nightmaxxing logout                        # Revoke this device's CLI token
 ```

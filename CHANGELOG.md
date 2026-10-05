@@ -7,6 +7,9 @@ All notable changes to nightmaxxing are documented here. Versions are anchored t
 
 ### Added
 
+- `nightmaxxing stats` shows your all-time totals, streaks, 30-day rank and top model, plus this
+  month's spend, rank, top agent and cache hit rate, with links to your profile and monthly recap
+  (`--json` for scripts).
 - Profiles show an Agents breakdown (all-time spend, tokens and active days per coding agent) and
   a Token mix with the cache hit rate.
 - Monthly recaps at `/<login>/recap/<YYYY-MM>`: the month's spend, tokens, rank, top model and

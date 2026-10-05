@@ -16,7 +16,10 @@ import { NightmaxxingApi } from "./api";
 const CLI_OPERATIONS = [
   "cliLogin.poll",
   "cliLogin.start",
+  // `nightmaxxing stats` (Nightmaxxing CLI 0.1.2+).
+  "insights.profile",
   "me.me",
+  "profiles.get",
   "usage.checkIn",
   "usage.ingest",
   "usage.logout",
