@@ -5,6 +5,8 @@ All notable changes to nightmaxxing are documented here. Versions are anchored t
 
 ## Unreleased
 
+## 0.1.2 - 2026-10-05
+
 ### Added
 
 - `nightmaxxing stats` shows your all-time totals, streaks, 30-day rank and top model, plus this

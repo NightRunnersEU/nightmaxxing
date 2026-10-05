@@ -1,6 +1,6 @@
 {
   "name": "@nightrunners/nightmaxxing",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "CLI for Nightmaxxing — sync your LLM token usage to the leaderboard.",
   "keywords": [
     "ccusage",
