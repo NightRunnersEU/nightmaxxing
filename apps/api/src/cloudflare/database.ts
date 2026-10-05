@@ -22,12 +22,10 @@ const Database = Cloudflare.D1.Database(
   "DB",
   // Annotated so a misspelled prop fails to compile: an inferred object
   // silently dropped the old `migrationsDir`, and deploys skipped migrations.
-  Stack.useSync(
-    ({ stage }): Cloudflare.D1.DatabaseProps => ({
-      name: databaseNameForStage(stage),
-      migrations,
-    }),
-  ),
+  Stack.useSync(({ stage }): Cloudflare.D1.DatabaseProps => ({
+    name: databaseNameForStage(stage),
+    migrations,
+  })),
 ).pipe(RemovalPolicy.retain());
 
 export { Database, migrations };

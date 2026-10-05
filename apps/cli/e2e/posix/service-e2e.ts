@@ -22,11 +22,11 @@
  *                   under config dirs with spaces, (), &, ', ", \, $, % and
  *                   non-ASCII (Linux: with a daemon-reload while the repair
  *                   is pending); a tab in the config dir is refused
- *   legacy upgrade  a release from before this template (0.7.0-alpha.0,
+ *   legacy upgrade  a release from before this template (0.1.0,
  *                   template 5) upgraded by a runner auto-update (deferred
  *                   repair) and by `service repair` (foreground)
  *
- *   bun apps/cli/e2e/posix/service-e2e.ts --build <build.json> [--root <dir>] [--out <dir>] [--legacy 0.7.0-alpha.0] [--force]
+ *   bun apps/cli/e2e/posix/service-e2e.ts --build <build.json> [--root <dir>] [--out <dir>] [--legacy 0.1.0] [--force]
  */
 import {
   accessSync,
@@ -109,7 +109,7 @@ const build = readBuild(requiredFlag("build"));
 // the PATH it captures, and the fake bun lives under the root.
 const root = flag("root") ?? join(process.env.RUNNER_TEMP ?? join(homedir(), ".cache"), "tmx-e2e");
 const outDir = flag("out") ?? join(root, "out");
-const legacyVersion = flag("legacy") ?? "0.7.0-alpha.0";
+const legacyVersion = flag("legacy") ?? "0.1.0";
 const title = `${backend === "launchd" ? "macOS launchd" : "Linux systemd --user"} service e2e`;
 assertDisposableMachine(process.argv.includes("--force"));
 initE2E(outDir, "service");

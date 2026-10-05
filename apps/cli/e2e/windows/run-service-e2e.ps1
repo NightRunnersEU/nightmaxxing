@@ -2,7 +2,7 @@
 # writes the summary. Everything runs in one step because the sandbox API and
 # the registry must outlive every phase.
 #
-#   run-service-e2e.ps1 -BuildJson <build.json> [-Root <dir>] [-OutDir <dir>] [-LegacyVersion 0.7.0-alpha.0]
+#   run-service-e2e.ps1 -BuildJson <build.json> [-Root <dir>] [-OutDir <dir>] [-LegacyVersion 0.1.0]
 #                       [-Only <scenario>,...] [-WatcherTask <task>] [-Force]
 #
 # 1. fake bun (../shared/fakes/) first on PATH, so scheduled runs never start real ccusage
@@ -21,7 +21,7 @@ param(
   # Must predate the hidden launcher (#100, first released in 0.7.0-alpha.1):
   # its task runs the .cmd directly, which the upgrade scenario migrates and
   # whose visible console is the window watcher's positive control.
-  [string]$LegacyVersion = "0.7.0-alpha.0",
+  [string]$LegacyVersion = "0.1.0",
   # Passed on to service-e2e.ps1, for a local VM run.
   [string[]]$Only = @(),
   [string]$WatcherTask = "",

@@ -21,7 +21,7 @@ release does and runs it on real runners:
   --user on `ubuntu-latest` and `ubuntu-24.04-arm`. Each installs the service,
   proves the scheduler itself ran the job, syncs to a local API sandbox, and
   covers status/doctor, the deferred repairs, the template migration from
-  `0.7.0-alpha.0`, and paths with spaces and non-ASCII.
+  `0.1.0`, and paths with spaces and non-ASCII.
 - **Shims**: global installs with npm, bun (with and without `--trust`),
   pnpm (with and without `--allow-build`) and yarn, then `nightmaxxing --version`
   from every shell.

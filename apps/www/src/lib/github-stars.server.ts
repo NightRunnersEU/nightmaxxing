@@ -177,13 +177,11 @@ async function refreshStars(deps: StarsDeps): Promise<void> {
   }
 
   const attemptedAt = deps.now();
-  const result = await deps.fetchStars(attemptedAt).catch(
-    (error: unknown): StarsFetchResult => ({
-      _tag: "Failed",
-      reason: String(error),
-      retryAt: null,
-    }),
-  );
+  const result = await deps.fetchStars(attemptedAt).catch((error: unknown): StarsFetchResult => ({
+    _tag: "Failed",
+    reason: String(error),
+    retryAt: null,
+  }));
 
   if (result._tag === "Fetched") {
     const snapshot: StarsSnapshot = { fetchedAt: attemptedAt, stars: result.stars };

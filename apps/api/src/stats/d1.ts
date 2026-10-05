@@ -75,19 +75,17 @@ function statsWindow(
   [totalRows, modelsBySpend, modelsByTokens, sources]: WindowRows,
 ) {
   return singleAggregateRow(totalRows).pipe(
-    Effect.map(
-      (windowTotals): StatsWindow => ({
-        dailyByModel: collapseChartModels(
-          chartRows.filter((row) => row.date >= since),
-          STATS_CHART_MODEL_LIMIT,
-        ),
-        modelsBySpend,
-        modelsByTokens,
-        since,
-        sources,
-        totals: windowTotals,
-      }),
-    ),
+    Effect.map((windowTotals): StatsWindow => ({
+      dailyByModel: collapseChartModels(
+        chartRows.filter((row) => row.date >= since),
+        STATS_CHART_MODEL_LIMIT,
+      ),
+      modelsBySpend,
+      modelsByTokens,
+      since,
+      sources,
+      totals: windowTotals,
+    })),
   );
 }
 
