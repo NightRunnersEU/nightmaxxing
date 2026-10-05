@@ -19,6 +19,7 @@ import { AdminService } from "../admin/service";
 import { AuthService } from "../auth/service";
 import { CliLoginService } from "../clilogin/service";
 import { AppConfig } from "../config";
+import { InsightsService } from "../insights/service";
 import { LeaderboardService } from "../leaderboard/service";
 import { OAuthProviders } from "../oauth/registry";
 import { ProfilesService } from "../profiles/service";
@@ -226,6 +227,7 @@ beforeAll(async () => {
     Context.add(AppConfig, config),
     Context.add(AuthService, auth),
     Context.add(CliLoginService, cliLogin),
+    Context.add(InsightsService, unused<InsightsService["Service"]>()),
     Context.add(LeaderboardService, unused<LeaderboardService["Service"]>()),
     Context.add(OAuthProviders, unused<OAuthProviders["Service"]>()),
     Context.add(ProfilesService, unused<ProfilesService["Service"]>()),

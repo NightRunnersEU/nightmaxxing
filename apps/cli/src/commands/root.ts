@@ -6,6 +6,7 @@ import { bootstrapCommand } from "./bootstrap";
 import { loginCommand } from "./login";
 import { logoutCommand } from "./logout";
 import { serviceCommand } from "./service";
+import { statsCommand } from "./stats";
 import { syncCommand } from "./sync";
 import { upgradeCommand } from "./upgrade";
 import { whoamiCommand } from "./whoami";
@@ -18,6 +19,7 @@ const nightmaxxingCommand = Command.make("nightmaxxing").pipe(
     loginCommand,
     logoutCommand,
     whoamiCommand,
+    statsCommand,
     syncCommand,
     upgradeCommand,
     serviceCommand,

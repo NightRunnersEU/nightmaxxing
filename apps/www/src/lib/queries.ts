@@ -3,6 +3,12 @@ import type { LeaderboardMetric, LeaderboardWindow } from "@nightmaxxing/api-con
 
 import { fetchViewer, runApi } from "./api";
 
+/** Inclusive YYYY-MM-DD bounds for an insights read. */
+interface InsightsRange {
+  since: string;
+  until: string;
+}
+
 /**
  * queryOptions for every server read — components compose these with
  * useQuery/useMutation. `queryKeys` is the single source of cache identity;
@@ -15,12 +21,15 @@ const queryKeys = {
   cliLoginRequest: (code: string) => ["me", "cliLogin", code] as const,
   devices: ["me", "devices"],
   leaderboard: ["leaderboard"],
-  leaderboardList: (metric: LeaderboardMetric, window: LeaderboardWindow) =>
-    ["leaderboard", metric, window] as const,
+  leaderboardList: (metric: LeaderboardMetric, window: LeaderboardWindow, source?: string) =>
+    ["leaderboard", metric, window, source ?? "all"] as const,
   me: ["me"],
   /** Prefix of both the profile summary and its daily rows. */
   profile: (login: string) => ["profile", login] as const,
   profileDaily: (login: string) => ["profile", login, "daily"] as const,
+  /** Insights over a range; no range means all time. */
+  profileInsights: (login: string, range?: InsightsRange) =>
+    ["profile", login, "insights", range?.since ?? "all", range?.until ?? "all"] as const,
   stats: ["stats"],
   tokens: ["me", "tokens"],
 } as const;
@@ -67,10 +76,19 @@ const statsQueryOptions = queryOptions({
   staleTime: 30_000,
 });
 
-function leaderboardQueryOptions(metric: LeaderboardMetric, window: LeaderboardWindow) {
+function leaderboardQueryOptions(
+  metric: LeaderboardMetric,
+  window: LeaderboardWindow,
+  source?: string,
+) {
   return queryOptions({
-    queryKey: queryKeys.leaderboardList(metric, window),
-    queryFn: () => runApi((client) => client.leaderboard.list({ query: { metric, window } })),
+    queryKey: queryKeys.leaderboardList(metric, window, source),
+    queryFn: () =>
+      runApi((client) =>
+        client.leaderboard.list({
+          query: source === undefined ? { metric, window } : { metric, source, window },
+        }),
+      ),
     staleTime: 30_000,
   });
 }
@@ -100,6 +118,18 @@ function profileDailyQueryOptions(login: string) {
   });
 }
 
+/** Nightmaxxing profile insights (agents, token mix, recap figures) over a range. */
+function profileInsightsQueryOptions(login: string, range?: InsightsRange) {
+  return queryOptions({
+    queryKey: queryKeys.profileInsights(login, range),
+    queryFn: () =>
+      runApi((client) =>
+        client.insights.profile({ params: { login }, query: range === undefined ? {} : range }),
+      ),
+    staleTime: 30_000,
+  });
+}
+
 /**
  * Refresh every public surface a usage or visibility change can move: the
  * leaderboard, aggregate stats, and (when known) the affected profile.
@@ -123,8 +153,11 @@ export {
   leaderboardQueryOptions,
   meQueryOptions,
   profileDailyQueryOptions,
+  profileInsightsQueryOptions,
   profileQueryOptions,
   queryKeys,
   statsQueryOptions,
   tokensQueryOptions,
 };
+
+export type { InsightsRange };

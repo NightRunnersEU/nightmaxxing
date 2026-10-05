@@ -557,9 +557,15 @@ const LeaderboardMetric = Schema.Literals(["spend", "tokens"]);
 
 type LeaderboardMetric = typeof LeaderboardMetric.Type;
 
-const LeaderboardWindow = Schema.Literals(["all", "30d", "7d"]);
+/** `month` is the current UTC calendar month to date. */
+const LeaderboardWindow = Schema.Literals(["all", "30d", "7d", "month"]);
 
 type LeaderboardWindow = typeof LeaderboardWindow.Type;
+
+/** An agent `source` tag as the CLI stores it, e.g. "claude" or "codex". */
+const LeaderboardSource = Schema.String.check(Schema.isPattern(/^[a-z0-9-]{1,32}$/));
+
+type LeaderboardSource = typeof LeaderboardSource.Type;
 
 const DEFAULT_LEADERBOARD_METRIC = "spend" as const satisfies LeaderboardMetric;
 const DEFAULT_LEADERBOARD_WINDOW = "30d" as const satisfies LeaderboardWindow;
@@ -582,6 +588,8 @@ type LeaderboardEntry = typeof LeaderboardEntry.Type;
 const LeaderboardResponse = Schema.Struct({
   entries: Schema.Array(LeaderboardEntry),
   metric: LeaderboardMetric,
+  /** The agent the ranking is limited to, when one was requested. */
+  source: Schema.optional(LeaderboardSource),
   window: LeaderboardWindow,
 });
 
@@ -919,6 +927,7 @@ export {
   LeaderboardEntry,
   LeaderboardMetric,
   LeaderboardResponse,
+  LeaderboardSource,
   LeaderboardWindow,
   ListAccountsResponse,
   ListDevicesResponse,

@@ -44,6 +44,7 @@ const nightmaxxingSubcommands = new Set([
   "login",
   "logout",
   "service",
+  "stats",
   "sync",
   "upgrade",
   "whoami",

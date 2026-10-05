@@ -25,11 +25,18 @@ describe("D1 leaderboard ranking", () => {
 
   afterEach(() => database.close());
 
-  function usage(userId: string, date: string, costUsd: number, totalTokens: number) {
+  function usage(
+    userId: string,
+    date: string,
+    costUsd: number,
+    totalTokens: number,
+    source = "codex",
+  ) {
     seedUsage(database.sqlite, {
       costUsd,
       date,
       deviceId: `${userId}-device`,
+      source,
       totalTokens,
       userId,
     });
@@ -122,6 +129,23 @@ describe("D1 leaderboard ranking", () => {
         totalTokens: 1,
         user: expect.objectContaining({ login: "alpha" }),
       }),
+    ]);
+  });
+
+  it("ranks only the requested agent's usage when a source is given", async () => {
+    usage("alpha", "2026-07-01", 10, 10, "codex");
+    usage("alpha", "2026-07-01", 1, 1, "claude");
+    usage("bravo", "2026-07-01", 5, 5, "claude");
+    usage("charlie", "2026-07-01", 50, 50, "codex");
+    const leaderboard = await makeLeaderboard();
+
+    const claude = await Effect.runPromise(
+      leaderboard.list({ limit: 10, metric: "spend", since: null, source: "claude", until }),
+    );
+
+    expect(claude.map((entry) => [entry.rank, entry.user.login, entry.spendUsd])).toEqual([
+      [1, "bravo", 5],
+      [2, "alpha", 1],
     ]);
   });
 

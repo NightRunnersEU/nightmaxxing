@@ -4,6 +4,7 @@ import { AdminServiceLive } from "./admin/d1";
 import { AuthServiceLive } from "./auth/d1";
 import { CleanupServiceLive } from "./cleanup/d1";
 import { CliLoginServiceLive } from "./clilogin/d1";
+import { InsightsServiceLive } from "./insights/d1";
 import { LeaderboardServiceLive } from "./leaderboard/d1";
 import { OAuthProvidersLive } from "./oauth/registry";
 import { ProfilesServiceLive } from "./profiles/d1";
@@ -20,6 +21,7 @@ const ServicesLive = Layer.mergeAll(
   AuthServiceLive,
   CleanupServiceLive,
   CliLoginServiceLive,
+  InsightsServiceLive,
   LeaderboardServiceLive,
   OAuthProvidersLive,
   ProfilesServiceLive,
