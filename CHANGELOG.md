@@ -5,6 +5,10 @@ All notable changes to nightmaxxing are documented here. Versions are anchored t
 
 ## Unreleased
 
+### Added
+
+- The profile Agents section can rank agents by spend or by tokens.
+
 ## 0.1.2 - 2026-10-05
 
 ### Added

@@ -1,9 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { StatCard } from "../../../components/stat-card";
+import { SegmentedControl, type SegmentedOption } from "../../../components/ui/segmented-control";
 import { formatInteger, formatPercent, formatTokens, formatUsd } from "../../../lib/format";
 import { profileInsightsQueryOptions } from "../../../lib/queries";
-import { agentRows, formatShare, tokenMix, type ProfileInsights } from "../-lib/insights-view";
+import {
+  agentRows,
+  formatShare,
+  rankAgentRows,
+  tokenMix,
+  type AgentMetric,
+  type ProfileInsights,
+} from "../-lib/insights-view";
 
 /**
  * Nightmaxxing's all-time profile insights: spend and tokens by agent, and
@@ -44,35 +53,61 @@ function PendingSection({ title }: { title: string }) {
   );
 }
 
+const AGENT_METRIC_OPTIONS = [
+  { label: "Spend", value: "spend" },
+  { label: "Tokens", value: "tokens" },
+] as const satisfies readonly SegmentedOption<AgentMetric>[];
+
 function AgentSection({ insights }: { insights: ProfileInsights }) {
-  const rows = agentRows(insights);
+  const [metric, setMetric] = useState<AgentMetric>("spend");
+  const rows = rankAgentRows(agentRows(insights), metric);
+  const bySpend = metric === "spend";
 
   return (
     <section className="bg-background p-5">
-      <h2 className="font-medium">Agents</h2>
-      <p className="mt-1 text-sm text-muted-foreground">All-time spend by coding agent.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-medium">Agents</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            All-time {bySpend ? "spend" : "tokens"} by coding agent.
+          </p>
+        </div>
+        <SegmentedControl
+          label="Measure agents by"
+          onChange={setMetric}
+          options={AGENT_METRIC_OPTIONS}
+          value={metric}
+        />
+      </div>
       <ol className="mt-4 divide-y divide-border border-y border-border">
-        {rows.map((row) => (
-          <li
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 py-3"
-            key={row.source}
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{row.label}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {formatTokens(row.totalTokens)} tokens · {formatInteger(row.activeDays)} active{" "}
-                {row.activeDays === 1 ? "day" : "days"}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm font-semibold">{formatUsd(row.spendUsd)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {formatShare(row.spendShare)} of spend
-              </p>
-            </div>
-            <ShareBar label={`${row.label} share of spend`} share={row.spendShare} />
-          </li>
-        ))}
+        {rows.map((row) => {
+          const share = bySpend ? row.spendShare : row.tokenShare;
+          const unit = bySpend ? "spend" : "tokens";
+
+          return (
+            <li
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 py-3"
+              key={row.source}
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{row.label}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {bySpend ? `${formatTokens(row.totalTokens)} tokens` : formatUsd(row.spendUsd)} ·{" "}
+                  {formatInteger(row.activeDays)} active {row.activeDays === 1 ? "day" : "days"}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-semibold">
+                  {bySpend ? formatUsd(row.spendUsd) : formatTokens(row.totalTokens)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatShare(share)} of {unit}
+                </p>
+              </div>
+              <ShareBar label={`${row.label} share of ${unit}`} share={share} />
+            </li>
+          );
+        })}
       </ol>
     </section>
   );

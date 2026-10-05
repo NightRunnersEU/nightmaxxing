@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { agentRows, formatShare, tokenMix } from "./insights-view";
+import { agentRows, formatShare, rankAgentRows, tokenMix } from "./insights-view";
 
 const totals = {
   activeDays: 3,
@@ -78,5 +78,33 @@ describe("formatShare", () => {
     expect(formatShare(0.04)).toBe("<0.1%");
     expect(formatShare(0.05)).toBe("0.1%");
     expect(formatShare(89.64)).toBe("89.6%");
+  });
+});
+
+describe("rankAgentRows", () => {
+  const rows = agentRows({
+    agents: [
+      { activeDays: 1, source: "claude", spendUsd: 8, totalTokens: 50 },
+      { activeDays: 1, source: "gemini", spendUsd: 1, totalTokens: 900 },
+      { activeDays: 1, source: "codex", spendUsd: 1, totalTokens: 50 },
+    ],
+    totals: { ...totals, spendUsd: 10, totalTokens: 1_000 },
+  });
+
+  it("keeps the API's spend order for spend", () => {
+    expect(rankAgentRows(rows, "spend").map((row) => row.source)).toEqual([
+      "claude",
+      "gemini",
+      "codex",
+    ]);
+  });
+
+  it("reranks by tokens, keeping spend order on a tie, without mutating the input", () => {
+    expect(rankAgentRows(rows, "tokens").map((row) => row.source)).toEqual([
+      "gemini",
+      "claude",
+      "codex",
+    ]);
+    expect(rows.map((row) => row.source)).toEqual(["claude", "gemini", "codex"]);
   });
 });
