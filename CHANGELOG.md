@@ -5,9 +5,31 @@ All notable changes to nightmaxxing are documented here. Versions are anchored t
 
 ## Unreleased
 
+## 0.1.1 - 2026-10-05
+
+Brings Nightmaxxing up to date with upstream tokenmaxxing 0.7.6. The upstream 0.7.0–0.7.6
+entries below describe each change in detail.
+
+### Added
+
+- New sources: Oh My Pi, Grok Build CLI, Antigravity, ZCode, Amp, Qwen Code, Kimi CLI, Kilo Code,
+  Goose, Droid, Codebuff and OpenClaw.
+- `NIGHTMAXXING_NPM_REGISTRY` (npm mirror for version checks and runner downloads) and
+  `NIGHTMAXXING_SYNC_WINDOW_DAYS` (how many past days scheduled syncs re-send).
+- Profiles show a Monthly Tokens chart next to Monthly Spend.
+
 ### Changed
 
-- Synced with upstream tokenmaxxing through CLI 0.7.6 (see the upstream entries below).
+- Scheduled syncs skip agents whose logs have not changed, and capture custom agent log
+  directories (OpenCode, Gemini, Copilot, Pi, XDG) when the service is installed or repaired.
+- `upgrade` installs an exact version and verifies it; `service doctor` exits 1 on a problem.
+
+### Fixed
+
+- Many service fixes from upstream 0.7.x across macOS, Linux and Windows, including Node from
+  fnm/asdf/mise/nodenv on the service `PATH`, falling back to npx when bun cannot run ccusage, and
+  clearer reasons when a scheduled sync fails.
+- Local filesystem paths are stripped from model names before they are stored.
 
 ## 0.7.6 - 2026-10-02
 
