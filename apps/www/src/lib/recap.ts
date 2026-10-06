@@ -2,8 +2,8 @@ import { MIN_USAGE_DATE_KEY, utcDayKey } from "@nightmaxxing/api-contract";
 import type { ProfileIdentityResponse, ProfileInsightsResponse } from "@nightmaxxing/api-contract";
 
 import { agentLabel } from "./agents";
-import { formatMonthLong, percentOf } from "./format";
-import { OG_IMAGE_STYLE_VERSION } from "./og";
+import { formatInteger, formatMonthLong, formatTokens, formatUsd, percentOf } from "./format";
+import { ogFingerprint, type OgMetric } from "./og";
 import { SITE_ORIGIN } from "./site";
 
 /**
@@ -103,17 +103,32 @@ function recapTitle(login: string, month: string): string {
   return `${login}'s ${formatMonthLong(month)} recap`;
 }
 
-/** Fingerprint of the recap card as it renders now: the R2 key and `?v=`. */
-function recapOgVersion({ insights, month }: Pick<RecapData, "insights" | "month">): string {
+/** The six figures the recap card shows, formatted as it shows them. */
+function recapOgMetrics(insights: ProfileInsights): (OgMetric & { name?: true })[] {
+  const figures = recapFigures(insights);
   return [
-    "recap",
+    { label: "Spend", value: formatUsd(figures.spendUsd) },
+    { label: "Tokens", value: formatTokens(figures.totalTokens) },
+    { label: "Active days", value: formatInteger(figures.activeDays) },
+    {
+      label: "Rank by spend",
+      value: figures.spendRank === null ? "—" : `#${formatInteger(figures.spendRank)}`,
+    },
+    // Names run longer than figures; the card sets them one step smaller.
+    { label: "Top model", name: true, value: figures.topModel ?? "—" },
+    { label: "Top agent", name: true, value: figures.topAgent ?? "—" },
+  ];
+}
+
+/** Fingerprint of the recap card as it renders: the R2 key and `?v=` (see ogFingerprint). */
+function recapOgVersion({ identity, insights, month }: RecapData): string {
+  const rendered = [
+    identity.login,
+    identity.avatarUrl ?? "",
     month,
-    Math.round(insights.totals.spendUsd * 100),
-    Math.round(insights.totals.totalTokens),
-    insights.totals.activeDays,
-    insights.spendRank ?? "none",
-    `s${OG_IMAGE_STYLE_VERSION}`,
-  ].join("-");
+    ...recapOgMetrics(insights).map((metric) => metric.value),
+  ];
+  return `recap-${month}-${ogFingerprint(rendered)}`;
 }
 
 function recapOgImageUrl(data: RecapData, origin = SITE_ORIGIN): string {
@@ -131,6 +146,7 @@ export {
   monthBounds,
   recapFigures,
   recapOgImageUrl,
+  recapOgMetrics,
   recapOgVersion,
   recapPath,
   recapTitle,

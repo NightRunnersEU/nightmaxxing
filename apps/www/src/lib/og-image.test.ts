@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { makeSiteOgImageHandler } from "../routes/og[.]png";
 import { SITE_OG_VERSION } from "./og";
 import {
+  captureOgCardScreenshot,
   ogCacheKey,
   PREVIEW_CACHE_CONTROL,
   renderOgImage,
@@ -134,3 +135,28 @@ function memoryBucket(entries: Array<[string, Uint8Array]> = []) {
 
   return bucket;
 }
+
+describe("captureOgCardScreenshot", () => {
+  it("captures the server-rendered card with JavaScript off, at the OG size", async () => {
+    const calls: unknown[] = [];
+    const png = new Uint8Array([1, 2, 3]);
+    const recording: OgBrowser = {
+      quickAction: async (_action, options) => {
+        calls.push(options);
+        return new Response(png);
+      },
+    };
+
+    const bytes = await captureOgCardScreenshot(recording, "https://maxxing.nrght.eu/og-card/alex");
+
+    expect([...bytes]).toEqual([1, 2, 3]);
+    expect(calls).toEqual([
+      expect.objectContaining({
+        selector: "#og-card",
+        setJavaScriptEnabled: false,
+        url: "https://maxxing.nrght.eu/og-card/alex",
+        viewport: expect.objectContaining({ height: 630, width: 1200 }),
+      }),
+    ]);
+  });
+});

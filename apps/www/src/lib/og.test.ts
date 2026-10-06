@@ -12,25 +12,32 @@ import {
 type Profile = typeof ProfileResponse.Type;
 
 describe("profile OG helpers", () => {
-  it("fingerprints profile stats that affect the card", () => {
-    const base = profile({
-      activeDays: 7,
-      lastDate: "2026-06-21",
-      spendUsd: 123.45,
-      totalTokens: 987_654,
-    });
+  it("keeps the fingerprint when a sync only moves values the card rounds away", () => {
+    const base = profile({ spendUsd: 123.45, totalTokens: 987_654 });
 
-    expect(profileOgVersion(base)).toBe("2026-06-21-12345-987654-7-s4");
+    expect(profileOgVersion(base)).toMatch(/^[0-9a-f]{8}-s\d+$/);
+    // "$123" and "987.7K" either way, and the card never shows the last date.
     expect(
-      profileOgVersion(
-        profile({
-          activeDays: 8,
-          lastDate: "2026-06-21",
-          spendUsd: 123.45,
-          totalTokens: 987_654,
-        }),
-      ),
-    ).not.toBe(profileOgVersion(base));
+      profileOgVersion(profile({ lastDate: "2026-06-22", spendUsd: 123.4, totalTokens: 987_699 })),
+    ).toBe(profileOgVersion(base));
+  });
+
+  it("changes the fingerprint when anything the card shows changes", () => {
+    const base = profile();
+    const changed = [
+      profile({ spendUsd: 124.5 }),
+      profile({ totalTokens: 1_100_000 }),
+      profile({ activeDays: 8 }),
+      withStats(base, { currentStreakDays: 4 }),
+      withStats(base, { sessionCount: 15 }),
+      withStats(base, { topModel: { model: "gpt-5", spendUsd: 42 } }),
+      { ...base, user: { ...base.user, avatarUrl: "https://example.com/new.png" } },
+      profile({ login: "alex" }),
+    ];
+
+    for (const subject of changed) {
+      expect(profileOgVersion(subject)).not.toBe(profileOgVersion(base));
+    }
   });
 
   it("describes usage with the same formatters as the profile page", () => {
@@ -49,18 +56,22 @@ describe("profile OG helpers", () => {
     });
 
     expect(profileOgDescription(empty)).toBe("pondorasti has not synced usage yet.");
-    expect(profileOgImagePath(empty)).toBe("/og/pondorasti.png?v=none-0-0-0-s4");
+    expect(profileOgImagePath(empty)).toBe(`/og/pondorasti.png?v=${profileOgVersion(empty)}`);
   });
 
   it("encodes logins in image and profile URLs", () => {
     const subject = profile({ login: "alex test" });
 
     expect(profileOgImageUrl(subject, "https://example.com")).toBe(
-      "https://example.com/og/alex%20test.png?v=2026-06-21-12345-987654-7-s4",
+      `https://example.com/og/alex%20test.png?v=${profileOgVersion(subject)}`,
     );
     expect(profileUrl(subject, "https://example.com")).toBe("https://example.com/alex%20test");
   });
 });
+
+function withStats(subject: Profile, stats: Partial<Profile["stats"]>): Profile {
+  return { ...subject, stats: { ...subject.stats, ...stats } };
+}
 
 function profile({
   activeDays = 7,

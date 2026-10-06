@@ -99,8 +99,13 @@ describe("recapFigures", () => {
 describe("recap links", () => {
   const data = { identity: { avatarUrl: null, login: "yann" }, insights, month: "2026-09" };
 
-  it("fingerprints the card by month and figures, never colliding with profile keys", () => {
-    expect(recapOgVersion(data)).toMatch(/^recap-2026-09-10000-1000-4-2-s\d+$/);
+  it("fingerprints the card as it renders, never colliding with profile keys", () => {
+    expect(recapOgVersion(data)).toMatch(/^recap-2026-09-[0-9a-f]{8}-s\d+$/);
+    // $100.004 and $100.40 both render "$100".
+    const cents = { ...insights, totals: { ...insights.totals, spendUsd: 100.4 } };
+    expect(recapOgVersion({ ...data, insights: cents })).toBe(recapOgVersion(data));
+    const rank = { ...insights, spendRank: 1 };
+    expect(recapOgVersion({ ...data, insights: rank })).not.toBe(recapOgVersion(data));
   });
 
   it("builds the page path and a versioned image URL", () => {

@@ -14,6 +14,7 @@ interface BrowserScreenshotOptions {
     type?: "png";
   };
   selector?: string;
+  setJavaScriptEnabled?: boolean;
   url: string;
   viewport?: {
     deviceScaleFactor?: number;

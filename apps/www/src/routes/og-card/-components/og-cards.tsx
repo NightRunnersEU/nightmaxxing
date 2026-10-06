@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { supportedAgentSentenceList } from "../../../lib/agents";
-import { formatInteger, formatTokens, formatUsd } from "../../../lib/format";
+import { profileOgMetrics } from "../../../lib/og";
 import type { ProfileOgData } from "../../../lib/og-data";
 import { NPM_INSTALL_COMMAND, SITE_DESCRIPTION, SITE_NAME } from "../../../lib/site";
 
@@ -35,15 +35,8 @@ function OgCardFrame({ children }: { children: ReactNode }) {
 
 function ProfileOgCard({ data }: { data: ProfileOgData }) {
   const { profile } = data;
-  const { stats } = profile;
-  const metrics = [
-    { label: "Total spend", value: formatUsd(stats.spendUsd) },
-    { label: "Total tokens", value: formatTokens(stats.totalTokens) },
-    { label: "Active days", value: formatInteger(stats.activeDays) },
-    { label: "Current streak", value: formatInteger(stats.currentStreakDays) },
-    { label: "Sessions", value: formatInteger(stats.sessionCount) },
-    { label: "Top spend model", value: stats.topModel === null ? "—" : stats.topModel.model },
-  ];
+  // Shared with profileOgVersion, so the cached image refreshes when these change.
+  const metrics = profileOgMetrics(profile);
 
   return (
     <OgCardFrame>

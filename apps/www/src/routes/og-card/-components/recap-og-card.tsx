@@ -1,6 +1,6 @@
 import { cn } from "../../../lib/cn";
-import { formatInteger, formatMonthLong, formatTokens, formatUsd } from "../../../lib/format";
-import { recapFigures, type RecapData } from "../../../lib/recap";
+import { formatMonthLong } from "../../../lib/format";
+import { recapOgMetrics, type RecapData } from "../../../lib/recap";
 import { OgCardFrame } from "./og-cards";
 
 /**
@@ -8,19 +8,8 @@ import { OgCardFrame } from "./og-cards";
  * profile card, so its hairlines land on the frame's fixed rules.
  */
 function RecapOgCard({ data }: { data: RecapData }) {
-  const figures = recapFigures(data.insights);
-  const metrics = [
-    { label: "Spend", value: formatUsd(figures.spendUsd) },
-    { label: "Tokens", value: formatTokens(figures.totalTokens) },
-    { label: "Active days", value: formatInteger(figures.activeDays) },
-    {
-      label: "Rank by spend",
-      value: figures.spendRank === null ? "—" : `#${formatInteger(figures.spendRank)}`,
-    },
-    // Names run longer than figures; one step smaller keeps them whole.
-    { label: "Top model", name: true, value: figures.topModel ?? "—" },
-    { label: "Top agent", name: true, value: figures.topAgent ?? "—" },
-  ];
+  // Shared with recapOgVersion, so the cached image refreshes when these change.
+  const metrics = recapOgMetrics(data.insights);
 
   return (
     <OgCardFrame>
