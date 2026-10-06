@@ -9,6 +9,11 @@ All notable changes to nightmaxxing are documented here. Versions are anchored t
 
 - The profile Agents section can rank agents by spend or by tokens.
 
+### Changed
+
+- `nightmaxxing stats` formats amounts like the website: "$1.2M" from a million, and values past
+  a quadrillion show as a capped `>999T`.
+
 ### Server
 
 - The API now rejects implausible usage at ingest, for every CLI version. A row (device, day,

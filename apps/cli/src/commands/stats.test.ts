@@ -11,7 +11,14 @@ import {
   ConsoleService,
   type NightmaxxingApiClient,
 } from "../services";
-import { localDayKey, statsEffect, statsLines, type StatsReport } from "./stats";
+import {
+  formatTokens,
+  formatUsd,
+  localDayKey,
+  statsEffect,
+  statsLines,
+  type StatsReport,
+} from "./stats";
 import { NotLoggedInError } from "./whoami";
 
 const promptCalls = vi.hoisted((): string[] => []);
@@ -296,5 +303,22 @@ describe("localDayKey", () => {
   it("uses the machine's local calendar day", () => {
     expect(localDayKey(new Date(2026, 0, 31, 23, 59))).toBe("2026-01-31");
     expect(localDayKey(new Date(2026, 1, 1, 0, 1))).toBe("2026-02-01");
+  });
+});
+
+describe("stat formatters", () => {
+  it("read like the website, including compact and capped extremes", () => {
+    expect([
+      formatUsd(0.46),
+      formatUsd(1_397.58),
+      formatUsd(1_234_567),
+      formatUsd(2.7e296),
+    ]).toEqual(["$0.46", "$1,398", "$1.2M", ">$999T"]);
+    expect([formatTokens(726_700), formatTokens(2.44e9), formatTokens(8.6e15)]).toEqual([
+      "726.7K",
+      "2.44B",
+      ">999T",
+    ]);
+    expect([formatUsd(Number.NaN), formatTokens(Number.NaN)]).toEqual(["—", "—"]);
   });
 });

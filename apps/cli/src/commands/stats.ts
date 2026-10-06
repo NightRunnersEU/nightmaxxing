@@ -202,24 +202,54 @@ const monthName = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
 });
 
-/** Whole dollars from $100 up, cents below — the website's rule. */
+const usdCompact = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 0,
+  notation: "compact",
+  style: "currency",
+});
+
+/** Fabricated values past this print as a fixed cap (the website's rule). */
+const DISPLAY_CEILING = 1e15;
+
+/** The website's formatUsd: whole dollars from $100, "$1.2M" from $1M, capped at ">$999T". */
 function formatUsd(value: number): string {
-  return value >= 100 ? usd0.format(value) : usd2.format(value);
+  if (Number.isNaN(value)) {
+    return "—";
+  }
+  const magnitude = Math.abs(value);
+  if (magnitude >= DISPLAY_CEILING) {
+    return value < 0 ? "<-$999T" : ">$999T";
+  }
+  if (magnitude >= 1e6) {
+    return usdCompact.format(value);
+  }
+
+  return magnitude >= 100 ? usd0.format(value) : usd2.format(value);
 }
 
-/** Same suffixes as the website, so both read alike. */
+/** The website's formatTokens, so both read alike. */
 function formatTokens(value: number): string {
-  if (value >= 1e12) {
-    return `${(value / 1e12).toFixed(2)}T`;
+  if (Number.isNaN(value)) {
+    return "—";
   }
-  if (value >= 1e9) {
-    return `${(value / 1e9).toFixed(2)}B`;
+  const magnitude = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  if (magnitude >= DISPLAY_CEILING) {
+    return value < 0 ? "<-999T" : ">999T";
   }
-  if (value >= 1e6) {
-    return `${(value / 1e6).toFixed(1)}M`;
+  if (magnitude >= 1e12) {
+    return `${sign}${(magnitude / 1e12).toFixed(2)}T`;
   }
-  if (value >= 1e3) {
-    return `${(value / 1e3).toFixed(1)}K`;
+  if (magnitude >= 1e9) {
+    return `${sign}${(magnitude / 1e9).toFixed(2)}B`;
+  }
+  if (magnitude >= 1e6) {
+    return `${sign}${(magnitude / 1e6).toFixed(1)}M`;
+  }
+  if (magnitude >= 1e3) {
+    return `${sign}${(magnitude / 1e3).toFixed(1)}K`;
   }
 
   return value.toFixed(0);
@@ -240,6 +270,6 @@ function monthLabel(month: string): string {
   return monthName.format(new Date(`${month}-01T00:00:00Z`));
 }
 
-export { localDayKey, statsCommand, statsEffect, statsLines };
+export { formatTokens, formatUsd, localDayKey, statsCommand, statsEffect, statsLines };
 
 export type { StatsOptions, StatsReport };
