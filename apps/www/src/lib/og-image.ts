@@ -121,6 +121,10 @@ async function captureOgCardScreenshot(browser: OgBrowser, url: string): Promise
       type: "png",
     },
     selector: "#og-card",
+    // Cards are complete server-rendered HTML. Without scripts the browser
+    // skips the app bundle, hydration and any client fetches, so the network
+    // goes idle once the CSS, fonts and avatar are in.
+    setJavaScriptEnabled: false,
     url,
     viewport: {
       deviceScaleFactor: 1,

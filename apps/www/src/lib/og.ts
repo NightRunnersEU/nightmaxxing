@@ -30,14 +30,51 @@ function profileOgDescription(profile: Profile): string {
   )} active days and ${formatTokens(stats.totalTokens)} tokens.`;
 }
 
-function profileOgVersion(profile: Profile): string {
+interface OgMetric {
+  label: string;
+  /** Formatted exactly as the card renders it. */
+  value: string;
+}
+
+/** The six figures the profile card shows, formatted as it shows them. */
+function profileOgMetrics(profile: Profile): OgMetric[] {
+  const { stats } = profile;
   return [
-    profile.stats.lastDate ?? "none",
-    Math.round(profile.stats.spendUsd * 100),
-    Math.round(profile.stats.totalTokens),
-    profile.stats.activeDays,
-    `s${OG_IMAGE_STYLE_VERSION}`,
-  ].join("-");
+    { label: "Total spend", value: formatUsd(stats.spendUsd) },
+    { label: "Total tokens", value: formatTokens(stats.totalTokens) },
+    { label: "Active days", value: formatInteger(stats.activeDays) },
+    { label: "Current streak", value: formatInteger(stats.currentStreakDays) },
+    { label: "Sessions", value: formatInteger(stats.sessionCount) },
+    { label: "Top spend model", value: stats.topModel === null ? "—" : stats.topModel.model },
+  ];
+}
+
+/**
+ * Fingerprint of a card as it renders: the image is re-captured only when
+ * something visible changes, not on every sync that moves a cent or a token.
+ * It keys the R2 cache and the `?v=` that lets crawlers cache immutably.
+ */
+function ogFingerprint(rendered: readonly string[]): string {
+  return `${fnv1a(rendered.join("\u0000"))}-s${OG_IMAGE_STYLE_VERSION}`;
+}
+
+function profileOgVersion(profile: Profile): string {
+  return ogFingerprint([
+    profile.user.login,
+    profile.user.avatarUrl ?? "",
+    ...profileOgMetrics(profile).map((metric) => metric.value),
+  ]);
+}
+
+/** 32-bit FNV-1a as 8 hex digits: short, stable, and plenty within one profile's keys. */
+function fnv1a(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function profileOgImagePath(profile: Profile): string {
@@ -61,9 +98,11 @@ export {
   OG_IMAGE_HEIGHT,
   OG_IMAGE_STYLE_VERSION,
   OG_IMAGE_WIDTH,
+  ogFingerprint,
   profileOgDescription,
   profileOgImagePath,
   profileOgImageUrl,
+  profileOgMetrics,
   profileOgTitle,
   profileOgVersion,
   profileUrl,
@@ -73,3 +112,5 @@ export {
   // Re-exported for routes that still import it from here; prefer lib/site.
   SITE_ORIGIN,
 };
+
+export type { OgMetric };
