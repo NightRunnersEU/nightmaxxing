@@ -7,8 +7,9 @@ import { loadRecapData } from "../../../lib/recap-data";
 
 /**
  * A monthly recap's Open Graph PNG, captured from `/og-card/recap/...` and
- * cached in R2 under the profile's scope with a `recap-<month>-…`
- * fingerprint, so it never collides with the profile card's keys.
+ * cached in R2 under its own `<login>/recap-<month>` scope. The scope is also
+ * where a failed capture looks for an earlier image, so it must never reach
+ * the profile card or another month's recap.
  */
 
 interface RecapOgRouteContext {
@@ -42,11 +43,15 @@ function makeRecapOgImageHandler(deps: RecapOgRouteDeps = defaultDeps) {
         return {
           cardPath: `/og-card/recap/${encodeURIComponent(login)}/${data.month}`,
           currentVersion: recapOgVersion(data),
-          scope: login,
+          scope: recapOgScope(login, data.month),
         };
       },
     });
   };
+}
+
+function recapOgScope(login: string, month: string): string {
+  return `${login}/recap-${month}`;
 }
 
 const Route = createFileRoute("/og/recap/$login/{$month}.png")({
@@ -57,6 +62,6 @@ const Route = createFileRoute("/og/recap/$login/{$month}.png")({
   },
 });
 
-export { makeRecapOgImageHandler, Route };
+export { makeRecapOgImageHandler, recapOgScope, Route };
 
 export type { RecapOgRouteDeps };
