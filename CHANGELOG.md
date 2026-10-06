@@ -9,6 +9,26 @@ All notable changes to nightmaxxing are documented here. Versions are anchored t
 
 - The profile Agents section can rank agents by spend or by tokens.
 
+### Changed
+
+- `nightmaxxing stats` formats amounts like the website: "$1.2M" from a million, and values past
+  a quadrillion show as a capped `>999T`.
+
+### Server
+
+- The API now rejects implausible usage at ingest, for every CLI version. A row (device, day,
+  agent, model) may hold at most 1T tokens in any token field, and its cost may not exceed
+  $2,000 per million tokens plus $250, with a ceiling of $1M. The heaviest real row so far is 110.7B
+  tokens and $131k. Rows outside these limits are dropped one by one without failing the sync.
+  Each drop is logged with the user and device, and counted per device on the admin page. A cost
+  above the limit is never kept by the cost freeze. On 2026-10-05, fabricated uploads of up to
+  $2.7×10²⁹⁶ and 8.6×10¹⁵ tokens a day reached upstream tokenmaxxing's leaderboard.
+- Usage totals on the leaderboard, stats, profiles and admin page no longer fail once a sum passes
+  the 64-bit integer range. That overflow is what made `/internal` return 500.
+- The site shows large amounts in compact form (1.2M dollars, 4.5B tokens), and anything at or
+  above a quadrillion shows as a capped `>999T`, so absurd values can no longer stretch the
+  leaderboard or profile layout.
+
 ## 0.1.2 - 2026-10-05
 
 ### Added
